@@ -134,7 +134,10 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .sheet.dlg.on{transform:none;opacity:1;pointer-events:auto}
 .sheet.dlg .grab{display:none}
 .sheet.dlg .ed-actions{position:static;margin-top:18px;padding:12px 18px 16px;border-radius:0 0 18px 18px}
-.grab{width:38px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 12px}
+.grab{width:38px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 12px;position:relative}
+.grab::after{content:"";position:absolute;inset:-14px -60px}   /* 拉桿很細，實際可以按的範圍放大 */
+.ed-full textarea{font-size:14px}
+.ed-full .ed-hint{margin:0 0 8px}
 .sh-head{display:flex;gap:10px;align-items:flex-start}
 .sh-title{font-size:18px;font-weight:600;line-height:1.35}
 .sh-sub{font-size:13px;color:var(--text2);margin-top:2px}
@@ -344,11 +347,16 @@ let BASE = { items: {}, days: {} };   // 最後一次跟雲端一致的樣子，
 let loaded = false, loadErr = false;  // 有沒有拿到過資料（雲端或手機裡存的）
 // 編輯是「草稿」：按「完成」才存到雲端，按「取消」就回到 editStart（進入編輯時的樣子）
 let editStart = null, resumeDraft = null;
+// 完整筆記是共用的（同一家店出現在好幾天也只有一份），改了先記在 noteQueue，跟卡片一起存；noteOld 是這次編輯前的樣子，按「取消」時還原
+let noteQueue = {}, noteOld = {};
 try {
   const c = JSON.parse(localStorage.getItem(CACHE_KEY));
-  if (c && c.data) { DATA = c.data; BASE = c.base; NOTES = c.notes || {}; loaded = true; resumeDraft = c.draft || null; }
+  if (c && c.data) {
+    DATA = c.data; BASE = c.base; NOTES = c.notes || {}; loaded = true; resumeDraft = c.draft || null;
+    noteQueue = c.noteQueue || {}; noteOld = c.noteOld || {};
+  }
 } catch {}
-function cache() { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data: DATA, base: BASE, notes: NOTES, draft: editStart })); } catch {} }
+function cache() { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data: DATA, base: BASE, notes: NOTES, draft: editStart, noteQueue, noteOld })); } catch {} }
 
 const getAuth = () => { try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch { return null; } };
 const setAuth = a => { try { a ? localStorage.setItem(AUTH_KEY, JSON.stringify(a)) : localStorage.removeItem(AUTH_KEY); } catch {} };
@@ -418,8 +426,34 @@ function diffOps(ref) {
   const days = DAY_KEYS.filter(k => { const a = DATA.days[k] || {}, b = ref.days[k] || {}; return a.en !== b.en || a.zh !== b.zh; });
   return { changed, deleted, days, count: changed.length + deleted.length + days.length };
 }
-const pendingOps = () => diffOps(BASE);   // 還沒存到雲端的
-const draftCount = () => editStart ? diffOps(editStart).count : 0;   // 這次編輯改了幾處
+const pendingOps = () => { const o = diffOps(BASE), n = Object.keys(noteQueue).length; o.notes = n; o.count += n; return o; };   // 還沒存到雲端的
+const draftCount = () => editStart ? diffOps(editStart).count + Object.keys(noteOld).length : 0;   // 這次編輯改了幾處
+// 改完整筆記：有變才記下來，回傳有沒有改
+function setFullNote(key, full) {
+  const cur = NOTES[key] || {};
+  if ((cur.full || '') === full) return false;
+  if (editing && !(key in noteOld)) noteOld[key] = NOTES[key] ? clone(NOTES[key]) : null;
+  NOTES[key] = { ...cur, full: full || undefined };
+  noteQueue[key] = true;
+  return true;
+}
+// 有幾張卡片／幾家店共用這份筆記
+function noteUsers(key) {
+  let n = 0;
+  for (const k of DAY_KEYS) for (const it of DATA[k] || []) {
+    if ((it.note || it.t) === key && !it.group && !it.alts?.length) n++;
+    (it.stops || []).concat(it.alts || []).forEach(x => { if (subNoteKey(x) === key) n++; });
+  }
+  return n;
+}
+// 編輯視窗裡的「完整筆記」：直接展開，可以整篇修改
+function fullNoteField(id, key) {
+  const n = noteUsers(key);
+  return `
+    <label class="ed-field ed-full"><span class="ed-lab">完整筆記</span>
+      ${n > 1 ? `<div class="ed-hint"><i class="ti ti-info-circle"></i> 這份筆記有 ${n} 個地方共用，改了會一起改</div>` : ''}
+      <textarea id="${id}" rows="10" placeholder="店家介紹、交通、菜單、營業時間…">${esc(NOTES[key]?.full || '')}</textarea></label>`;
+}
 // 把目前的資料拍一張快照（格式跟 BASE 一樣）
 function snapshot() {
   const snap = { items: {}, days: {}, full: clone(DATA) };
@@ -445,11 +479,19 @@ async function sync() {
   clearTimeout(retryTimer);
   const ops = pendingOps();
   if (!ops.count) { if (syncState === 'error' || syncState === 'saving') setSyncState('idle'); return; }
+  const noteKeys = Object.keys(noteQueue);
   const auth = getAuth();
   if (!auth) { setSyncState('error'); return; }
   syncing = true; setSyncState('saving');
   const label = nextLabel; nextLabel = '';
   try {
+    if (noteKeys.length) {
+      const notes = {};
+      noteKeys.forEach(k => { const n = NOTES[k] || {}; notes[k] = { orig: n.orig, points: n.points, links: n.links, full: n.full }; });
+      await api({ ...auth, action: 'saveNotes', notes });
+      noteKeys.forEach(k => delete noteQueue[k]);
+    }
+    if (ops.count > ops.notes) {
     // 所有修改合成一個請求送出，只要等一次
     const base = {};
     ops.changed.forEach(it => { if (BASE.items[it.id]) base[it.id] = BASE.items[it.id].updated_at; });
@@ -458,6 +500,7 @@ async function sync() {
     r.items.forEach(x => BASE.items[x.id] = x);
     r.deleted.forEach(id => delete BASE.items[id]);
     r.days.forEach(d => BASE.days[d.day] = { en: d.en, zh: d.zh });
+    }
     syncing = false; cache();
     if (syncAgain || pendingOps().count) { syncAgain = false; sync(); }
     else { setSyncState('saved'); if (!lastLoad) load(); }   // 一打開就有沒存上去的修改：存完再抓別人的更新
@@ -892,7 +935,7 @@ function openNote(title, info, mine, q) {
   openSheet(`
     <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">${esc(title)}</div><div class="sh-sub">${esc(info.orig || '')}</div></div>
       ${q ? navBtn(q, title) : ''}<button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
-    ${mine ? `<div class="mine"><b>很用心的筆記</b>${esc(mine)}</div>` : ''}
+    ${mine ? `<div class="mine"><b>筆記摘要</b>${esc(mine)}</div>` : ''}
     ${info.points ? `<div class="sh-sec">重點整理</div><ul class="sh-list">${info.points.map(p => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
     ${info.full ? `<details class="full-note"${info.points ? '' : ' open'}><summary>完整筆記 <i class="ti ti-chevron-down"></i></summary>
       <div class="full-txt">${linkify(info.full)}</div></details>` : ''}
@@ -915,6 +958,34 @@ document.addEventListener('click', e => {
   if (e.target.closest('.sh-close, .ed-cancel')) closeSheet();
 }, true);
 sheetBg.addEventListener('click', closeSheet);
+// 往下拉關掉面板：拉上方的拉桿或標題列；內容已經捲到最上面時，在空白處往下拉也可以
+let pull = null;
+sheet.addEventListener('touchstart', e => {
+  if (sheet.classList.contains('dlg') || e.touches.length > 1) return;
+  const onHead = e.target.closest('.grab, .sh-head');
+  if (!onHead && (sheet.scrollTop > 0 || e.target.closest('input, textarea, select, .chips, .full-txt'))) return;
+  pull = { y0: e.touches[0].clientY, dy: 0, t0: Date.now(), active: false };
+}, { passive: true });
+sheet.addEventListener('touchmove', e => {
+  if (!pull) return;
+  const dy = e.touches[0].clientY - pull.y0;
+  if (!pull.active) {
+    if (dy < -6) { pull = null; return; }   // 往上滑：照常捲動內容
+    if (dy < 6) return;
+    pull.active = true; sheet.style.transition = 'none';
+  }
+  e.preventDefault();
+  pull.dy = Math.max(0, dy);
+  sheet.style.transform = `translateY(${pull.dy}px)`;
+}, { passive: false });
+const pullEnd = () => {
+  const p = pull; pull = null;
+  if (!p?.active) return;
+  sheet.style.transition = ''; sheet.style.transform = '';
+  if (p.dy > 90 || (p.dy > 30 && p.dy / (Date.now() - p.t0) > 0.5)) closeSheet();   // 拉夠遠、或快速往下一甩
+};
+sheet.addEventListener('touchend', pullEnd);
+sheet.addEventListener('touchcancel', pullEnd);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && sheet.classList.contains('on')) closeSheet(); });
 
 // ---------- 編輯模式 ----------
@@ -923,7 +994,7 @@ const fab = document.getElementById('fab');
 function setEditing(on) {
   editing = on;
   if (on && !editStart) editStart = snapshot();
-  if (!on) editStart = null;
+  if (!on) { editStart = null; noteOld = {}; }
   cache();
   if (on) setSyncState('idle');
   if (!on && deferred) { const r = deferred; deferred = null; if (!pendingOps().count && !syncing) applyServer(r); }
@@ -960,6 +1031,7 @@ document.getElementById('editCancel').addEventListener('click', () => {
     </div>`, '.ed-cancel', true);
   sheet.querySelector('#cxGo').addEventListener('click', () => {
     DATA = clone(editStart.full);
+    for (const [k, v] of Object.entries(noteOld)) { if (v) NOTES[k] = v; else delete NOTES[k]; delete noteQueue[k]; }
     closeSheet(); setEditing(false); toast('已放棄修改');
   });
 });
@@ -1331,9 +1403,9 @@ let ed = null;   // 正在編輯的內容
 function openEditor(id, startAt) {
   const [, it] = id ? findItem(id) : [null, null];
   ed = it
-    ? { id, isNew: false, t: it.t, desc: it.desc || '', cls: it.cls, s: it.s, dur: m(it.e) - m(it.s), map: it.map || '', travel: it.travel || '',
+    ? { id, isNew: false, noteKey: it.note || it.t, t: it.t, desc: it.desc || '', cls: it.cls, s: it.s, dur: m(it.e) - m(it.s), map: it.map || '', travel: it.travel || '',
         booked: !!it.booked, alert: it.alert || '', mine: it.mine || '', group: !!it.group, pick: !it.group && !!it.alts?.length, kind: 'one', orig: { s: it.s, e: it.e } }
-    : { id: null, isNew: true, t: '', desc: '', cls: 'eat', s: startAt, dur: 60, map: '', travel: '', booked: false, alert: '', mine: '', group: false, pick: false, kind: 'one' };
+    : { id: null, isNew: true, noteKey: '', t: '', desc: '', cls: 'eat', s: startAt, dur: 60, map: '', travel: '', booked: false, alert: '', mine: '', group: false, pick: false, kind: 'one' };
   const durs = [30, 60, 90, 120, 180];
   openSheet(`
     <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">${ed.isNew ? '新增行程' : '編輯行程'}</div>
@@ -1383,8 +1455,9 @@ function openEditor(id, startAt) {
     <label class="ed-check"><input type="checkbox" id="edBooked"${ed.booked ? ' checked' : ''}> 已訂位</label>
     <label class="ed-field"><span class="ed-lab">重點提醒</span>
       <input id="edAlert" type="text" value="${esc(ed.alert)}" placeholder="例如：只收現金、16:30 關門" autocomplete="off"></label>
-    <label class="ed-field"><span class="ed-lab">很用心的筆記</span>
-      <textarea id="edMine" rows="3" placeholder="想提醒大家的事">${esc(ed.mine)}</textarea></label>`}
+    <label class="ed-field"><span class="ed-lab">筆記摘要</span>
+      <textarea id="edMine" rows="3" placeholder="想提醒大家的事">${esc(ed.mine)}</textarea></label>
+    ${fullNoteField('edFull', ed.noteKey)}`}
     <div class="ed-actions">
       ${ed.isNew ? '' : '<button type="button" class="btn ghost danger" id="edDel"><i class="ti ti-trash"></i> 刪除</button>'}
       <button type="button" class="btn ghost ed-cancel">取消</button>
@@ -1460,6 +1533,9 @@ function saveEditor() {
   const t = $('edT').value.trim();
   if (!t) { $('edTErr').hidden = false; $('edT').focus(); return; }
   const gt = ed.kind !== 'one' ? $('edGT').value.trim() : '';
+  // 完整筆記：新卡片用名稱當筆記代號；這張卡片原本沒有連到筆記的話，順便連上
+  const fullEl = $('edFull'), noteKey = ed.noteKey || t;
+  if (fullEl) setFullNote(noteKey, fullEl.value.trim());
   if (ed.kind !== 'one' && !gt) { $('edGTErr').hidden = false; $('edGT').focus(); return; }
   const sMin = m($('edS').value || ed.s), eMin = sMin + ed.dur;
   const timeErr = msg => { $('edTimeErr').textContent = msg; $('edTimeErr').hidden = false; };
@@ -1471,7 +1547,8 @@ function saveEditor() {
       !confirm('這是已訂位的行程，確定要改時間嗎？')) return;
   const fields = { t, s: hhmm(sMin), e: hhmm(eMin), travel: $('edTravel').value.trim() };
   if (!ed.group) Object.assign(fields, {
-    cls: ed.cls, ...(ed.pick ? {} : { map: $('edMap').value.trim(), desc: $('edDesc').value.trim() }), booked: $('edBooked').checked,
+    cls: ed.cls, ...(ed.pick ? {} : { map: $('edMap').value.trim(), desc: $('edDesc').value.trim() }),
+    ...(fullEl && NOTES[noteKey] ? { note: noteKey } : {}), booked: $('edBooked').checked,
     alert: $('edAlert').value.trim(), mine: $('edMine').value.trim(),
   });
   if (ed.kind !== 'one') {
@@ -1554,8 +1631,9 @@ function openSubEditor(cardId, kind, idx) {
     <label class="ed-field"><span class="ed-lab">地圖 <span class="ed-lab-hint">貼上 Google 地圖的分享連結最準確</span></span>
       <input id="sbMap" type="text" value="${esc(sub.map)}" placeholder="貼上分享連結，或輸入店名" autocomplete="off" inputmode="url"></label>
     <div class="map-status" id="sbMapStatus"></div>
-    <label class="ed-field"><span class="ed-lab">很用心的筆記</span>
+    <label class="ed-field"><span class="ed-lab">筆記摘要</span>
       <textarea id="sbMine" rows="3" placeholder="想提醒大家的事">${esc(sub.mine || '')}</textarea></label>
+    ${fullNoteField('sbFull', isNew ? '' : subNoteKey(sub))}
     <div class="err" id="sbErr" hidden></div>
     <div class="ed-actions">
       ${isNew ? '' : '<button type="button" class="btn ghost danger" id="sbDel"><i class="ti ti-trash"></i> 刪除</button>'}
@@ -1586,6 +1664,8 @@ function saveSub() {
   const sub = { ...old, name, map: $('sbMap').value.trim(), mine: $('sbMine').value.trim() };
   if (name !== old.name) delete sub.short;                      // 改了名字，收合時就顯示新名字
   if (!old.note && NOTES[subNoteKey(old)]) sub.note = subNoteKey(old);   // 改名後還找得到原本整理好的筆記
+  const noteKey = sed.isNew ? name : subNoteKey(old);
+  if (setFullNote(noteKey, $('sbFull').value.trim()) && NOTES[noteKey]) sub.note = noteKey;
   if (isStop) {
     const sMin = m($('sbS').value || old.s || card.s);
     if (sMin + sed.dur > 24 * 60) { $('sbErr').textContent = '結束時間不能超過 24:00'; $('sbErr').hidden = false; return; }
