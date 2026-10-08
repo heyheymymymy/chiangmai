@@ -333,6 +333,10 @@ addEventListener('resize', updateTabFade);
 // ---------- 小工具 ----------
 const m = s => { const [h, mi] = s.split(':').map(Number); return h * 60 + mi; };
 const hhmm = n => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+// 過了午夜還算同一天：記成 24:30、25:15，畫面上顯示 00:30、01:15。一天最晚排到隔天 05:00
+const DAY_END = 29 * 60, NIGHT = 5 * 60;
+const T = s => hhmm(m(s) % (24 * 60));                       // 顯示用
+const fromInput = v => { const n = m(v); return n < NIGHT ? n + 24 * 60 : n; };   // 時間輸入框：00:00–04:59 當成當天深夜
 const durLabel = n => n < 60 ? `${n} 分` : n % 60 === 0 ? `${n / 60}h` : n % 30 === 0 ? `${Math.floor(n / 60)}.5h` : `${Math.floor(n / 60)}h${n % 60}m`;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => 'c' + Math.random().toString(36).slice(2, 9);
@@ -612,7 +616,7 @@ let START = 9, END = 22, baseH = 0;
 function computeRange() {
   let lo = 9 * 60, hi = 22 * 60;
   for (const k of DAY_KEYS) for (const it of DATA[k] || []) { lo = Math.min(lo, m(it.s)); hi = Math.max(hi, m(it.e)); }
-  START = Math.floor(lo / 60); END = Math.min(24, Math.ceil(hi / 60));
+  START = Math.floor(lo / 60); END = Math.min(29, Math.ceil(hi / 60));
   baseH = (END - START) * 60 * PX + 20;
 }
 const y = s => (m(s) - START * 60) * PX;
@@ -673,7 +677,7 @@ function relayout() {
 function renderGrid() {
   target = tl; live = true;
   for (let h = START; h <= END; h++) {
-    place(div('hr', h + ':00'), (h - START) * 60 * PX - 7);
+    place(div('hr', (h % 24) + ':00'), (h - START) * 60 * PX - 7);   // 過了午夜顯示 0:00、1:00
     place(div('ln'), (h - START) * 60 * PX);
   }
 }
@@ -731,7 +735,7 @@ function renderCards(items) {
         : `${it.stops.map((st, i) => `
           <div class="stop" data-kind="stop" data-idx="${i}"><div class="num">${i + 1}</div>
             <div style="flex:1;min-width:0"><div class="n">${esc(st.name)}${subNoteBtn(it.id, 'stop', i, st)}</div>${st.orig ? `<div class="o">${esc(st.orig)}</div>` : ''}
-              <div class="m"><i class="ti ti-clock"></i> ${st.s} · ${durLabel(st.dur)}${st.area ? `　<i class="ti ti-map-pin"></i> ${esc(st.area)}` : ''}</div></div>
+              <div class="m"><i class="ti ti-clock"></i> ${T(st.s)} · ${durLabel(st.dur)}${st.area ? `　<i class="ti ti-map-pin"></i> ${esc(st.area)}` : ''}</div></div>
             ${st.map ? navBtn(st.map, st.name) : ''}${subEditIc}
           </div>`).join('')}<button type="button" class="add-sub" data-kind="stop"><i class="ti ti-plus"></i> 新增一站</button>`;
       g.innerHTML = `
@@ -740,7 +744,7 @@ function renderCards(items) {
           : `<i class="ti ti-stack-2"></i> ${esc(it.t)} · ${it.stops.length} 站`}${editIc}</span><i class="ti ti-chevron-down chev"></i></div>
         <div class="sum"><div style="font-size:12px;line-height:1.6${pick ? ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis' : ''}">${pick
           ? esc(it.alts.map(a => a.name).join('／'))
-          : esc(it.stops.map(st => st.short || st.name).join(' → '))}</div><div style="font-size:12px">${it.s}–${it.e} · ${durLabel(mins)}${tags}</div></div>
+          : esc(it.stops.map(st => st.short || st.name).join(' → '))}</div><div style="font-size:12px">${T(it.s)}–${T(it.e)} · ${durLabel(mins)}${tags}</div></div>
         <div class="list">${rows}</div>`;
       setCol(g, it.id);
       makeExpander(g, top, h, g);
@@ -754,8 +758,8 @@ function renderCards(items) {
                  (it.alert ? ` · <i class="ti ti-alert-triangle"></i> ${esc(it.alert)}` : '');
     const b = div('blk ' + it.cls + (showNav ? ' has-nav' : '') + (compact ? ' compact' : '') + extra,
       compact
-        ? `<div class="t">${esc(it.t)}${noteBtn(it)}<span class="tm">· ${it.s}–${it.e}</span></div>${showNav ? navBtn(it.map, it.t) : ''}${editIc}`
-        : `<div class="t">${esc(it.t)}${noteBtn(it)}</div>${descLines(it, h)}<div class="s">${it.s}–${it.e} · ${durLabel(mins)}${tags}</div>${showNav ? navBtn(it.map, it.t) : ''}${editIc}`);
+        ? `<div class="t">${esc(it.t)}${noteBtn(it)}<span class="tm">· ${T(it.s)}–${T(it.e)}</span></div>${showNav ? navBtn(it.map, it.t) : ''}${editIc}`
+        : `<div class="t">${esc(it.t)}${noteBtn(it)}</div>${descLines(it, h)}<div class="s">${T(it.s)}–${T(it.e)} · ${durLabel(mins)}${tags}</div>${showNav ? navBtn(it.map, it.t) : ''}${editIc}`);
     b.dataset.id = it.id;
     setCol(b, it.id);
     b.style.height = h + 'px'; place(b, top);
@@ -858,7 +862,7 @@ function renderOverview() {
   const booked = days.flatMap(d => d.items.filter(it => it.booked).map(it => ({ d, it })));
   html += '<div class="ov-sec">已訂位</div>' + (booked.length
     ? '<div class="ov-chips">' + booked.map(({ d, it }) =>
-      `<button type="button" class="ov-chip ${it.cls || 'eat'}" data-go="${d.k}"><b>${d.info.date} ${it.s}</b> ${esc(shortName(it.t))}</button>`).join('') + '</div>'
+      `<button type="button" class="ov-chip ${it.cls || 'eat'}" data-go="${d.k}"><b>${d.info.date} ${T(it.s)}</b> ${esc(shortName(it.t))}</button>`).join('') + '</div>'
     : '<div class="ov-empty">還沒有勾「已訂位」的行程</div>');
   ovEl.innerHTML = html;
 }
@@ -1210,7 +1214,7 @@ tl.addEventListener('click', e => {
   if (!e.target.closest('.cards')) return;
   const r = tl.getBoundingClientRect();
   const mins = START * 60 + Math.floor((e.clientY - r.top) / PX / 15) * 15;
-  openEditor(null, hhmm(Math.max(0, Math.min(mins, 23 * 60))));
+  openEditor(null, hhmm(Math.max(0, Math.min(mins, DAY_END - 60))));
 }, true);
 // ---------- 長按拖曳：把卡片拖到另一張卡片上，兩個行程交換時段 ----------
 const LONG_PRESS = 350, MOVE_TOL = 8;
@@ -1294,7 +1298,7 @@ function timeAtY(clientY) {
     else if (y0 - off > ex.top + ex.h) { off += y0 - off - ex.top - ex.h; break; }
   }
   const mins = START * 60 + Math.round((y0 - off) / PX / 5) * 5;
-  return Math.max(0, Math.min(mins, 23 * 60 + 55));
+  return Math.max(0, Math.min(mins, DAY_END - 5));
 }
 let slotEl = null;
 function showSlot(mins) {
@@ -1302,7 +1306,7 @@ function showSlot(mins) {
   if (!slotEl) { slotEl = div('drop-slot'); tl.appendChild(slotEl); }
   const off = expanders.filter(ex => ex.top < y(hhmm(mins))).reduce((a, ex) => a + (ex.extra || 0), 0);
   slotEl.style.top = y(hhmm(mins)) + off + 'px';
-  slotEl.innerHTML = `<span>拉出來放在 ${hhmm(mins)}</span>`;
+  slotEl.innerHTML = `<span>拉出來放在 ${T(hhmm(mins))}</span>`;
 }
 function clearDropMarks() {
   tl.querySelectorAll('.drop-target, .drop-into, .ins').forEach(el => el.classList.remove('drop-target', 'drop-into', 'ins'));
@@ -1360,14 +1364,14 @@ function mergeInto(id, cardId, idx, before) {
       const prevEnd = m(stops[i - 1].s) + stops[i - 1].dur;
       if (m(stops[i].s) < prevEnd) stops[i].s = hhmm(prevEnd);
     }
-    if (stops.some(x => m(x.s) + x.dur > 24 * 60)) { DATA[current] = snapshot; renderPage(current); toast('放進去之後會超過 24:00，沒有放進去'); return false; }
+    if (stops.some(x => m(x.s) + x.dur > DAY_END)) { DATA[current] = snapshot; renderPage(current); toast('放進去之後會超過凌晨 05:00，沒有放進去'); return false; }
     fitGroup(card);
   } else {
     card.alts.splice(idx, 0, { ...base, desc: src.desc || '', info: src.alert || '' });
   }
   list.splice(list.indexOf(src), 1);
   saveData('放進區塊'); renderPage(current);
-  toast(`已把「${src.t}」放進「${card.t}」${card.group ? `，區塊時間 ${card.s}–${card.e}` : ''}`, '復原', () => {
+  toast(`已把「${src.t}」放進「${card.t}」${card.group ? `，區塊時間 ${T(card.s)}–${T(card.e)}` : ''}`, '復原', () => {
     DATA[current] = snapshot; saveData(); renderPage(current); toast('已復原');
   });
   return true;
@@ -1380,7 +1384,7 @@ function pullOut(sub, at, intoId, intoIdx) {
   const subs = sub.kind === 'stop' ? card.stops : card.alts, x = subs[sub.idx];
   const dur = sub.kind === 'stop' ? x.dur : m(card.e) - m(card.s);
   const start = at ?? (sub.kind === 'stop' ? m(x.s) : m(card.s));
-  const it = { id: uid(), t: x.name, desc: sub.kind === 'alt' ? x.desc || '' : '', cls: card.cls, s: hhmm(start), e: hhmm(Math.min(start + dur, 24 * 60)),
+  const it = { id: uid(), t: x.name, desc: sub.kind === 'alt' ? x.desc || '' : '', cls: card.cls, s: hhmm(start), e: hhmm(Math.min(start + dur, DAY_END)),
     map: x.map || '', mine: x.mine || '', note: x.note || '', alert: sub.kind === 'alt' ? x.info || '' : '', travel: '' };
   subs.splice(sub.idx, 1);
   let gone = '';
@@ -1389,7 +1393,7 @@ function pullOut(sub, at, intoId, intoIdx) {
   list.push(it); list.sort((a, b) => m(a.s) - m(b.s));
   if (intoId) { if (!mergeInto(it.id, intoId, intoIdx, snapshot)) { DATA[current] = snapshot; renderPage(current); } return; }
   saveData('拉出來'); renderPage(current);
-  toast(`已把「${x.name}」拉出來，放在 ${it.s}${gone}`, '復原', () => { DATA[current] = snapshot; saveData(); renderPage(current); toast('已復原'); });
+  toast(`已把「${x.name}」拉出來，放在 ${T(it.s)}${gone}`, '復原', () => { DATA[current] = snapshot; saveData(); renderPage(current); toast('已復原'); });
 }
 // 交換：比較早的時段換成另一個行程（從原本的開始時間開始），比較晚的行程改成在原本的結束時間結束，各自保留自己的停留時間
 function swapItems(idA, idB) {
@@ -1486,7 +1490,7 @@ tl.addEventListener('click', e => { if (pressFired) { pressFired = false; e.stop
 fab.addEventListener('click', () => {
   const items = itemsOf(current);
   const last = items.length ? m(items[items.length - 1].e) : 9 * 60 + 45;
-  openEditor(null, hhmm(Math.min(Math.ceil(last / 15) * 15, 23 * 60)));
+  openEditor(null, hhmm(Math.min(Math.ceil(last / 15) * 15, DAY_END - 60)));
 });
 
 // ---------- 標題／副標原地編輯 ----------
@@ -1553,7 +1557,7 @@ function openEditor(id, startAt) {
     <div class="ed-field"><span class="ed-lab">類型</span><div class="chips" id="edCls">
       ${TYPES.map(([k, n]) => `<button type="button" class="chip ${k}${k === ed.cls ? ' on' : ''}" data-v="${k}">${n}</button>`).join('')}</div></div>`}
     <div class="ed-field"><span class="ed-lab">時間</span>
-      <div class="ed-row"><input id="edS" type="time" step="300" value="${ed.s}" aria-label="開始時間"><span class="ed-to" id="edEnd"></span></div>
+      <div class="ed-row"><input id="edS" type="time" step="300" value="${T(ed.s)}" aria-label="開始時間"><span class="ed-to" id="edEnd"></span></div>
       ${ed.group ? '<div class="ed-hint"><i class="ti ti-info-circle"></i> 區塊的長度由裡面的店家決定。改開始時間，所有店家會一起移動</div>' : `
       <div class="chips" id="edDur" style="margin-top:10px">
         ${durs.map(d => `<button type="button" class="chip" data-v="${d}">${durLabel(d)}</button>`).join('')}</div>
@@ -1590,8 +1594,8 @@ function openEditor(id, startAt) {
 function wireEditor() {
   const $ = id => sheet.querySelector('#' + id);
   const refresh = () => {
-    const sMin = m($('edS').value || ed.s), eMin = sMin + ed.dur;
-    $('edEnd').textContent = `→ ${eMin >= 24 * 60 ? '隔天 ' + hhmm(eMin - 24 * 60) : hhmm(eMin)}`;
+    const sMin = $('edS').value ? fromInput($('edS').value) : m(ed.s), eMin = sMin + ed.dur;
+    $('edEnd').textContent = `→ ${T(hhmm(eMin))}${eMin > 24 * 60 ? '（過午夜）' : ''}`;
     if ($('edDurTxt')) $('edDurTxt').textContent = `停留 ${durLabel(ed.dur)}`;
     sheet.querySelectorAll('#edDur .chip').forEach(c => c.classList.toggle('on', +c.dataset.v === ed.dur));
     // 時間有變時，才問要不要把後面的行程一起順延
@@ -1658,12 +1662,12 @@ function saveEditor() {
   const fullEl = $('edFull'), noteKey = ed.noteKey || t;
   if (fullEl) setFullNote(noteKey, fullEl.value.trim());
   if (ed.kind !== 'one' && !gt) { $('edGTErr').hidden = false; $('edGT').focus(); return; }
-  const sMin = m($('edS').value || ed.s), eMin = sMin + ed.dur;
+  const sMin = $('edS').value ? fromInput($('edS').value) : m(ed.s), eMin = sMin + ed.dur;
   const timeErr = msg => { $('edTimeErr').textContent = msg; $('edTimeErr').hidden = false; };
-  if (eMin > 24 * 60) return timeErr('結束時間不能超過 24:00');
+  if (eMin > DAY_END) return timeErr('最晚只能排到凌晨 05:00');
   const push = $('edPush')?.checked;
   const delta = ed.isNew ? 0 : eMin - m(ed.orig.e);
-  if (push && laterItems().some(x => m(x.e) + delta > 24 * 60)) return timeErr('順延後有行程會超過 24:00，請調整一下');
+  if (push && laterItems().some(x => m(x.e) + delta > DAY_END)) return timeErr('順延後有行程會超過凌晨 05:00，請調整一下');
   if (!ed.isNew && ed.booked && (hhmm(sMin) !== ed.orig.s || hhmm(eMin) !== ed.orig.e) &&
       !confirm('這是已訂位的行程，確定要改時間嗎？')) return;
   const fields = { t, s: hhmm(sMin), e: hhmm(eMin), travel: $('edTravel').value.trim() };
@@ -1739,7 +1743,7 @@ function openSubEditor(cardId, kind, idx) {
       <input id="sbSub" type="text" value="${esc(isStop ? sub.orig : sub.desc)}" placeholder="${isStop ? '例如：Joost Smoothies' : '例如：高 CP 值人氣平價按摩'}" autocomplete="off"></label>
     ${isStop ? `
     <div class="ed-field"><span class="ed-lab">時間</span>
-      <div class="ed-row"><input id="sbS" type="time" step="300" value="${sub.s}" aria-label="抵達時間"><span class="ed-to" id="sbEnd"></span></div>
+      <div class="ed-row"><input id="sbS" type="time" step="300" value="${T(sub.s)}" aria-label="抵達時間"><span class="ed-to" id="sbEnd"></span></div>
       <div class="chips" id="sbDur" style="margin-top:10px">${[5, 10, 15, 30, 45, 60].map(d => `<button type="button" class="chip" data-v="${d}">${durLabel(d)}</button>`).join('')}</div>
       <div class="ed-row" style="margin-top:10px">
         <button type="button" class="step" data-d="-5" aria-label="少 5 分鐘"><i class="ti ti-minus"></i></button>
@@ -1765,7 +1769,7 @@ function openSubEditor(cardId, kind, idx) {
   const refresh = () => {
     $('sbMapStatus').innerHTML = mapStatusHtml($('sbMap').value.trim(), $('sbName').value.trim());
     if (!isStop) return;
-    $('sbEnd').textContent = '→ ' + hhmm(m($('sbS').value || sub.s) + sed.dur);
+    $('sbEnd').textContent = '→ ' + T(hhmm(($('sbS').value ? fromInput($('sbS').value) : m(sub.s)) + sed.dur));
     $('sbDurTxt').textContent = `停留 ${durLabel(sed.dur)}`;
     sheet.querySelectorAll('#sbDur .chip').forEach(c => c.classList.toggle('on', +c.dataset.v === sed.dur));
   };
@@ -1788,15 +1792,15 @@ function saveSub() {
   const noteKey = sed.isNew ? name : subNoteKey(old);
   if (setFullNote(noteKey, $('sbFull').value.trim()) && NOTES[noteKey]) sub.note = noteKey;
   if (isStop) {
-    const sMin = m($('sbS').value || old.s || card.s);
-    if (sMin + sed.dur > 24 * 60) { $('sbErr').textContent = '結束時間不能超過 24:00'; $('sbErr').hidden = false; return; }
+    const sMin = $('sbS').value ? fromInput($('sbS').value) : m(old.s || card.s);
+    if (sMin + sed.dur > DAY_END) { $('sbErr').textContent = '最晚只能排到凌晨 05:00'; $('sbErr').hidden = false; return; }
     Object.assign(sub, { s: hhmm(sMin), dur: sed.dur, orig: $('sbSub').value.trim(), area: $('sbArea').value.trim() });
   } else Object.assign(sub, { desc: $('sbSub').value.trim(), info: $('sbInfo').value.trim() });
   if (sed.isNew) list.push(sub); else list[sed.idx] = sub;
   let note = sed.isNew ? (isStop ? '已新增一站' : '已新增選項') : '已儲存';
   if (isStop) {
     list.sort((a, b) => m(a.s) - m(b.s));
-    if (fitGroup(card)) note += `，區塊時間調整為 ${card.s}–${card.e}`;
+    if (fitGroup(card)) note += `，區塊時間調整為 ${T(card.s)}–${T(card.e)}`;
   }
   saveData(); closeSheet(); renderPage(current); toast(note);
 }
