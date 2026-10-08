@@ -583,18 +583,20 @@ function setSyncState(st, quiet) {
 
 // ---------- 從雲端載入 ----------
 let loading = false, lastLoad = 0, deferred = null;
+let loadRetry = 0;
 async function load(force) {
   if (loading) return;
   if (!force && (syncing || pendingOps().count)) { sync(); return; }   // 先把自己的修改存上去
   loading = true;
   try {
     const r = await api();
-    lastLoad = Date.now();
+    lastLoad = Date.now(); loadRetry = 0;
     if (!force && (syncing || pendingOps().count)) return;   // 等待期間又改了東西：這次先不要蓋掉
     if (editing && !force) { deferred = r; return; }         // 編輯中不要整頁換掉，按「完成」後再套用
     applyServer(r); refreshView();
   } catch (e) {
     if (!loaded) { loadErr = true; refreshView(); setTimeout(load, 10000); }   // 還沒有任何資料：10 秒後再試
+    else if (loadRetry < 5) { loadRetry++; setTimeout(load, 15000); }       // 先顯示手機裡的舊資料，雲端讀取失敗（Google 偶爾回錯誤頁）：15 秒後再試，最多 5 次
   } finally { loading = false; }
 }
 function refreshView() {
