@@ -60,6 +60,34 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .layer.anim{transition:transform .32s cubic-bezier(.2,.8,.2,1)}
 .tl.sliding .now{opacity:0}
 .mv{transition:top .25s ease}
+/* 總覽：全部從每天的行程算出來，改了行程這裡自動跟著變 */
+.ov{padding:16px 16px 48px;touch-action:pan-y pinch-zoom}
+/* 第 1 天和總覽之間滑動換頁：新的那頁從滑過來的方向淡入 */
+@keyframes inL{from{transform:translateX(-48px);opacity:0}to{transform:none;opacity:1}}
+@keyframes inR{from{transform:translateX(48px);opacity:0}to{transform:none;opacity:1}}
+.in-l{animation:inL .26s ease}
+.in-r{animation:inR .26s ease}
+.ov-sec{font-size:12px;font-weight:600;color:var(--muted);margin:22px 0 8px}
+.ov-sec:first-child{margin-top:0}
+.ov-row{display:flex;align-items:flex-start;gap:10px;width:100%;padding:12px 0;border:0;border-top:1px solid var(--line);background:none;
+  font:inherit;color:var(--text);text-align:left;cursor:pointer}
+.ov-row:first-of-type{border-top:0}
+.ov-when{flex:none;width:86px;font-size:12px;color:var(--text2);line-height:1.45}
+.ov-when b{display:block;font-size:13px;color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.ov-places{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.ov-place{display:flex;align-items:center;gap:8px;min-width:0;font-size:14px;font-weight:600;line-height:1.35}
+.ov-place .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-row .ov-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--c-bd)}
+.ov-ok{flex:none;font-size:14px;color:var(--spa-fg)}
+.ov-row .ti-chevron-right{flex:none;color:var(--muted);margin-top:1px}
+.ov-stats{display:flex;flex-wrap:wrap;gap:6px}
+.ov-stat{display:flex;align-items:baseline;gap:4px;padding:6px 10px;border-radius:10px;background:var(--c-bg);color:var(--c-fg);font-size:12px}
+.ov-stat b{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.ov-chips{display:flex;flex-wrap:wrap;gap:6px}
+.ov-chip{max-width:100%;padding:4px 10px;border-radius:999px;border:0;font:inherit;font-size:12px;background:var(--c-bg);color:var(--c-fg);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.ov-chip b{font-weight:600;font-variant-numeric:tabular-nums}
+.ov-empty{font-size:13px;color:var(--muted);padding:6px 0}
 .hr{position:absolute;left:0;width:44px;text-align:right;font-size:11px;color:var(--muted)}
 .ln{position:absolute;left:52px;right:0;border-top:1px solid var(--line)}
 .blk{position:absolute;left:4px;right:0;padding:6px 10px 5px;border:0;border-radius:8px;overflow:hidden}
@@ -284,6 +312,7 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
     <button type="button" class="edit-btn" id="editBtn" aria-label="編輯行程"><i class="ti ti-pencil"></i></button>
   </header>
   <div class="tl" id="tl"></div>
+  <div class="ov" id="ov" hidden></div>
 </div>
 <button type="button" class="fab" id="fab" aria-label="新增行程"><i class="ti ti-plus"></i></button>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -753,7 +782,7 @@ function updateHeader(page) {
     daySub.innerHTML = `${d.date}．${d.wd}．<span id="subTheme">${esc(d.zh)}</span>`;
   } else {
     dayTitle.textContent = PAGES[page].en;
-    daySub.textContent = PAGES[page].sub;
+    daySub.textContent = page === 'overview' ? `${dayInfo('d1').date}–${dayInfo('d8').date}．${DAY_KEYS.length} 天 ${DAY_KEYS.length - 1} 夜` : PAGES[page].sub;
   }
   fab.classList.toggle('day', isDay(page));
   applyHeaderEditable();
@@ -770,6 +799,8 @@ function renderPage(page) {
   computeRange();
   tl.innerHTML = ''; movable.length = 0; expanders.length = 0;
   tl.classList.remove('sliding');
+  ovEl.hidden = page !== 'overview';
+  if (page === 'overview') renderOverview();
   if (!isDay(page)) { tl.style.display = 'none'; cardsEl = curLayer = null; return; }
   tl.style.display = ''; tl.style.height = baseH + 'px';
   renderGrid();
@@ -787,6 +818,51 @@ function renderPage(page) {
   }
   // 「現在時間」紅線先拿掉，之後考慮做成開關（樣式 .now 保留著）
 }
+
+// ---------- 總覽 ----------
+const ovEl = document.getElementById('ov');
+const TYPE_NAME = Object.fromEntries(TYPES);
+// 標籤用短一點的名字：去掉括號裡的補充；「英文店名 中文說明」只留英文店名
+function shortName(t) {
+  t = t.replace(/[（(][^）)]*[）)]\s*$/, '').trim();
+  const m = t.match(/^([A-Za-z0-9][A-Za-z0-9.&'’ -]*?)\s+[\u4e00-\u9fff]/);
+  return m ? m[1] : t;
+}
+function renderOverview() {
+  const days = DAY_KEYS.map(k => ({ k, info: dayInfo(k), items: [...(DATA[k] || [])].sort((a, b) => m(a.s) - m(b.s)) }));
+  let html = '';
+  if (!loaded) { ovEl.innerHTML = `<div class="ov-empty">${loadErr ? '載入失敗，請檢查網路後重新整理' : '載入行程中…'}</div>`; return; }
+  // 小統計：按摩算次數，其他類型同一家只算一次；合併區塊裡的每一站各算一家，多選一算一家；交通、住宿（其他）不算
+  const count = {}, seen = new Set();
+  for (const d of days) for (const it of d.items) {
+    const add = (cls, name) => {
+      if (cls === 'other') return;
+      if (cls !== 'spa' && name && seen.has(name)) return;
+      seen.add(name); count[cls] = (count[cls] || 0) + 1;
+    };
+    if (it.group && it.stops?.length) it.stops.forEach(st => add(it.cls, st.name));
+    else add(it.cls, it.alts?.length ? it.id : it.t);
+  }
+  const unit = { eat: '家', spa: '次', cafe: '家', bar: '家', shop: '處', see: '處' };
+  // 每天：左邊日期和主題，右邊列出當天要去的地方（「其他」類型只列清邁機場，回家休息、放行李這類不列）
+  const listed = it => it.cls !== 'other' || /清邁.*機場/.test(it.t);
+  html += '<div class="ov-sec">每天</div>' + days.map(d => {
+    const places = d.items.filter(listed).map(it => `
+      <span class="ov-place"><span class="ov-dot ${it.cls || 'eat'}"></span><span class="nm">${esc(it.t)}</span>${it.booked ? '<i class="ti ti-circle-check ov-ok"></i>' : ''}</span>`).join('');
+    return `<button type="button" class="ov-row" data-go="${d.k}"><span class="ov-when"><b>${d.info.date} ${d.info.wd}</b>${esc(d.info.zh || '')}</span>
+      <span class="ov-places">${places || '<span class="ov-empty">還沒有行程</span>'}</span><i class="ti ti-chevron-right"></i></button>`;
+  }).join('');
+  html += '<div class="ov-sec">這趟旅程</div><div class="ov-stats">' + TYPES.filter(([k]) => count[k]).map(([k, n]) =>
+    `<span class="ov-stat ${k}">${n}<b>${count[k]}</b>${unit[k] || '個'}</span>`).join('') + '</div>';
+  // 已訂位：用標籤，點了跳到那一天
+  const booked = days.flatMap(d => d.items.filter(it => it.booked).map(it => ({ d, it })));
+  html += '<div class="ov-sec">已訂位</div>' + (booked.length
+    ? '<div class="ov-chips">' + booked.map(({ d, it }) =>
+      `<button type="button" class="ov-chip ${it.cls || 'eat'}" data-go="${d.k}"><b>${d.info.date} ${it.s}</b> ${esc(shortName(it.t))}</button>`).join('') + '</div>'
+    : '<div class="ov-empty">還沒有勾「已訂位」的行程</div>');
+  ovEl.innerHTML = html;
+}
+ovEl.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) showPage(b.dataset.go); });
 
 function collapseAll() {
   if (!expanders.some(ex => ex.el.classList.contains('open'))) return;
@@ -854,12 +930,13 @@ tl.addEventListener('touchmove', e => {
     collapseAll();
     tl.classList.add('sliding');
     const n = dayNum(current);
+    sw.toOv = n === 1;   // 第 1 天往右滑 → 總覽
     if (n > 1) { sw.prev = buildLayer('d' + (n - 1), false); cardsEl.appendChild(sw.prev); }
     if (n < 8) { sw.next = buildLayer('d' + (n + 1), false); cardsEl.appendChild(sw.next); }
     [curLayer, sw.prev, sw.next].forEach(l => l && l.classList.add('drag'));
   }
   let d = dx;
-  if ((dx > 0 && !sw.prev) || (dx < 0 && !sw.next)) d = dx * 0.25;
+  if ((dx > 0 && !sw.prev && !sw.toOv) || (dx < 0 && !sw.next)) d = dx * 0.25;
   sw.dx = d;
   curLayer.style.transform = `translateX(${d}px)`;
   if (sw.prev) sw.prev.style.transform = `translateX(${d - sw.W}px)`;
@@ -867,7 +944,7 @@ tl.addEventListener('touchmove', e => {
 }, { passive: true });
 function endSwipe(cancelled = false) {
   if (!sw || sw.lock !== 'h') { sw = null; return; }
-  const { dx, W, prev, next } = sw;
+  const { dx, W, prev, next, toOv } = sw;
   const v = dx / Math.max(1, performance.now() - sw.t);
   // 系統中斷（例如來電）時一律彈回，不換頁
   const goNext = !cancelled && next && (dx < -W * 0.25 || (dx < -30 && v < -0.4));
@@ -875,7 +952,18 @@ function endSwipe(cancelled = false) {
   [curLayer, prev, next].filter(Boolean).forEach(l => { l.classList.remove('drag'); l.classList.add('anim'); });
   busy = true;
   let done = false;
-  if (goNext || goPrev) {
+  const goOv = !cancelled && toOv && (dx > W * 0.25 || (dx > 30 && v > 0.4));
+  if (goOv) {
+    curLayer.style.transform = `translateX(${W}px)`;
+    next?.remove();
+    const finish = () => {
+      if (done) return; done = true; busy = false;
+      showPage('overview', false); location.hash = 'overview';
+      playIn(ovEl, 'in-l');
+    };
+    curLayer.addEventListener('transitionend', finish, { once: true });
+    setTimeout(finish, 450);
+  } else if (goNext || goPrev) {
     const dir = goNext ? 1 : -1, page = 'd' + (dayNum(current) + dir);
     updateHeader(page);
     curLayer.style.transform = `translateX(${-dir * W}px)`;
@@ -900,6 +988,39 @@ function endSwipe(cancelled = false) {
   sw = null;
 }
 tl.addEventListener('touchend', () => endSwipe());
+const playIn = (el, cls) => { el.classList.remove('in-l', 'in-r'); void el.offsetWidth; el.classList.add(cls); el.addEventListener('animationend', () => el.classList.remove(cls), { once: true }); };
+// 總覽往左滑 → 第 1 天
+let osw = null;
+ovEl.addEventListener('touchstart', e => {
+  if (editing || e.touches.length > 1) return;
+  const t = e.touches[0]; osw = { x: t.clientX, y: t.clientY, t: performance.now(), dx: 0, lock: null };
+}, { passive: true });
+ovEl.addEventListener('touchmove', e => {
+  if (!osw) return;
+  const t = e.touches[0], dx = t.clientX - osw.x, dy = t.clientY - osw.y;
+  if (!osw.lock) {
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+    osw.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+    if (osw.lock === 'v') { osw = null; return; }
+    ovEl.style.transition = 'none';
+  }
+  osw.dx = dx < 0 ? dx : dx * 0.25;   // 往右是盡頭，只拉得動一點點
+  ovEl.style.transform = `translateX(${osw.dx}px)`;
+}, { passive: true });
+function ovSwipeEnd(cancelled) {
+  if (!osw || osw.lock !== 'h') { osw = null; return; }
+  const { dx } = osw, v = dx / Math.max(1, performance.now() - osw.t), W = ovEl.clientWidth;
+  osw = null;
+  const go = !cancelled && (dx < -W * 0.25 || (dx < -30 && v < -0.4));
+  ovEl.style.transition = 'transform .22s ease';
+  ovEl.style.transform = go ? `translateX(${-W}px)` : '';
+  setTimeout(() => {
+    if (go) { showPage('d1', false); location.hash = 'd1'; if (cardsEl) playIn(cardsEl, 'in-r'); }
+    ovEl.style.transition = ''; ovEl.style.transform = '';
+  }, go ? 200 : 240);
+}
+ovEl.addEventListener('touchend', () => ovSwipeEnd());
+ovEl.addEventListener('touchcancel', () => ovSwipeEnd(true));
 tl.addEventListener('touchcancel', () => endSwipe(true));
 
 // ---------- 下方滑出的面板（筆記和編輯共用） ----------
