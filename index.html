@@ -239,7 +239,7 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .blk,.grp,.stop{transition-property:height,top,transform,background-color}
 .pressing{transform:scale(.97);transition:transform .55s ease!important}
 .stop.pressing{transform:none;background:rgba(0,0,0,.04)}
-.dragging{z-index:30!important;pointer-events:none;box-shadow:0 10px 24px rgba(60,30,10,.22);opacity:.8}   /* 半透明，才看得到底下要交換的卡片 */
+.dragging{pointer-events:none;opacity:.4}   /* 卡片留在原位變半透明，虛線框標出新位置 */
 .drop-target{box-shadow:inset 0 0 0 2px var(--accent-fg)}
 /* 拖進展開的卡片：整張虛線框，插入的位置畫一條線 */
 .drop-into{box-shadow:inset 0 0 0 2px var(--accent-fg)}
@@ -251,6 +251,10 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
   box-shadow:0 10px 24px rgba(60,30,10,.22);opacity:.92;border:0}
 .sub-ghost .nav,.sub-ghost .note-btn,.sub-ghost .sub-ed{display:none}
 .drop-slot{position:absolute;left:50px;right:4px;z-index:4;border-top:2px dashed var(--accent-fg);pointer-events:none}
+.drop-box{position:absolute;left:4px;right:0;z-index:31;border:2px dashed var(--accent-fg);border-radius:8px;pointer-events:none;
+  background:color-mix(in srgb,var(--accent-fg) 6%,transparent)}
+.drop-box span{position:absolute;left:6px;top:4px;font-size:12px;font-weight:600;color:var(--accent-fg);background:var(--bg,#fff);
+  padding:1px 6px;border-radius:4px;box-shadow:0 1px 4px rgba(60,30,10,.18)}
 .drop-slot span{position:absolute;left:0;top:2px;font-size:11px;font-weight:600;color:var(--accent-fg);background:var(--bg,#fff);padding:0 4px;border-radius:4px}
 .drag-on .blk:not(.dragging),.drag-on .grp:not(.dragging){transition:box-shadow .12s}
 .add-sub{display:none;width:100%;height:38px;margin:6px 0 4px;border:1px dashed var(--border);border-radius:10px;background:#fff;
@@ -311,7 +315,7 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .chips.sm::-webkit-scrollbar{display:none}
 .chips.sm{gap:5px}
 /* 備選頁：跟時間軸一樣的彩色卡片，由上往下排 */
-.cand-page{padding:16px 16px 96px}
+.cand-page{padding:16px 16px 96px;touch-action:pan-y pinch-zoom}
 .cand-page .blk{position:relative;left:auto;right:auto;margin-bottom:8px;padding-bottom:8px}
 .cand-page .blk .d{-webkit-line-clamp:2}
 .chips.sm .chip{height:30px;padding:0 4px;font-size:13px;flex:1 1 0;min-width:0}   /* 每個長度標籤一樣寬，平均排滿一行 */
@@ -1098,12 +1102,13 @@ tl.addEventListener('touchmove', e => {
     tl.classList.add('sliding');
     const n = dayNum(current);
     sw.toOv = n === 1;   // 第 1 天往右滑 → 總覽
+    sw.toCand = n === 8;   // 第 8 天往左滑 → 備選
     if (n > 1) { sw.prev = buildLayer('d' + (n - 1), false); cardsEl.appendChild(sw.prev); }
     if (n < 8) { sw.next = buildLayer('d' + (n + 1), false); cardsEl.appendChild(sw.next); }
     [curLayer, sw.prev, sw.next].forEach(l => l && l.classList.add('drag'));
   }
   let d = dx;
-  if ((dx > 0 && !sw.prev && !sw.toOv) || (dx < 0 && !sw.next)) d = dx * 0.25;
+  if ((dx > 0 && !sw.prev && !sw.toOv) || (dx < 0 && !sw.next && !sw.toCand)) d = dx * 0.25;
   sw.dx = d;
   curLayer.style.transform = `translateX(${d}px)`;
   if (sw.prev) sw.prev.style.transform = `translateX(${d - sw.W}px)`;
@@ -1111,7 +1116,7 @@ tl.addEventListener('touchmove', e => {
 }, { passive: true });
 function endSwipe(cancelled = false) {
   if (!sw || sw.lock !== 'h') { sw = null; return; }
-  const { dx, W, prev, next, toOv } = sw;
+  const { dx, W, prev, next, toOv, toCand } = sw;
   const v = dx / Math.max(1, performance.now() - sw.t);
   // 系統中斷（例如來電）時一律彈回，不換頁
   const goNext = !cancelled && next && (dx < -W * 0.25 || (dx < -30 && v < -0.4));
@@ -1120,13 +1125,15 @@ function endSwipe(cancelled = false) {
   busy = true;
   let done = false;
   const goOv = !cancelled && toOv && (dx > W * 0.25 || (dx > 30 && v > 0.4));
-  if (goOv) {
-    curLayer.style.transform = `translateX(${W}px)`;
-    next?.remove();
+  const goCand = !cancelled && toCand && (dx < -W * 0.25 || (dx < -30 && v < -0.4));
+  if (goOv || goCand) {
+    curLayer.style.transform = `translateX(${goOv ? W : -W}px)`;
+    (goOv ? next : prev)?.remove();
     const finish = () => {
       if (done) return; done = true; busy = false;
-      showPage('overview', false); location.hash = 'overview';
-      playIn(ovEl, 'in-l');
+      const page = goOv ? 'overview' : 'cand';
+      showPage(page, false); location.hash = page;
+      playIn(goOv ? ovEl : candEl, goOv ? 'in-l' : 'in-r');
     };
     curLayer.addEventListener('transitionend', finish, { once: true });
     setTimeout(finish, 450);
@@ -1156,38 +1163,42 @@ function endSwipe(cancelled = false) {
 }
 tl.addEventListener('touchend', () => endSwipe());
 const playIn = (el, cls) => { el.classList.remove('in-l', 'in-r'); void el.offsetWidth; el.classList.add(cls); el.addEventListener('animationend', () => el.classList.remove(cls), { once: true }); };
-// 總覽往左滑 → 第 1 天
-let osw = null;
-ovEl.addEventListener('touchstart', e => {
-  if (editing || e.touches.length > 1) return;
-  const t = e.touches[0]; osw = { x: t.clientX, y: t.clientY, t: performance.now(), dx: 0, lock: null };
-}, { passive: true });
-ovEl.addEventListener('touchmove', e => {
-  if (!osw) return;
-  const t = e.touches[0], dx = t.clientX - osw.x, dy = t.clientY - osw.y;
-  if (!osw.lock) {
-    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-    osw.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
-    if (osw.lock === 'v') { osw = null; return; }
-    ovEl.style.transition = 'none';
-  }
-  osw.dx = dx < 0 ? dx : dx * 0.25;   // 往右是盡頭，只拉得動一點點
-  ovEl.style.transform = `translateX(${osw.dx}px)`;
-}, { passive: true });
-function ovSwipeEnd(cancelled) {
-  if (!osw || osw.lock !== 'h') { osw = null; return; }
-  const { dx } = osw, v = dx / Math.max(1, performance.now() - osw.t), W = ovEl.clientWidth;
-  osw = null;
-  const go = !cancelled && (dx < -W * 0.25 || (dx < -30 && v < -0.4));
-  ovEl.style.transition = 'transform .22s ease';
-  ovEl.style.transform = go ? `translateX(${-W}px)` : '';
-  setTimeout(() => {
-    if (go) { showPage('d1', false); location.hash = 'd1'; if (cardsEl) playIn(cardsEl, 'in-r'); }
-    ovEl.style.transition = ''; ovEl.style.transform = '';
-  }, go ? 200 : 240);
+// 總覽往左滑 → 第 1 天；備選往右滑 → 第 8 天（另一邊是盡頭，只拉得動一點點）
+function edgeSwipe(el, dir, page) {
+  let osw = null;
+  el.addEventListener('touchstart', e => {
+    if (editing || e.touches.length > 1) return;
+    const t = e.touches[0]; osw = { x: t.clientX, y: t.clientY, t: performance.now(), dx: 0, lock: null };
+  }, { passive: true });
+  el.addEventListener('touchmove', e => {
+    if (!osw) return;
+    const t = e.touches[0], dx = t.clientX - osw.x, dy = t.clientY - osw.y;
+    if (!osw.lock) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      osw.lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+      if (osw.lock === 'v') { osw = null; return; }
+      el.style.transition = 'none';
+    }
+    osw.dx = dx * dir > 0 ? dx : dx * 0.25;
+    el.style.transform = `translateX(${osw.dx}px)`;
+  }, { passive: true });
+  const end = cancelled => {
+    if (!osw || osw.lock !== 'h') { osw = null; return; }
+    const { dx } = osw, v = dx / Math.max(1, performance.now() - osw.t), W = el.clientWidth;
+    osw = null;
+    const go = !cancelled && (dx * dir > W * 0.25 || (dx * dir > 30 && v * dir > 0.4));
+    el.style.transition = 'transform .22s ease';
+    el.style.transform = go ? `translateX(${dir * W}px)` : '';
+    setTimeout(() => {
+      if (go) { showPage(page, false); location.hash = page; if (cardsEl) playIn(cardsEl, dir < 0 ? 'in-r' : 'in-l'); }
+      el.style.transition = ''; el.style.transform = '';
+    }, go ? 200 : 240);
+  };
+  el.addEventListener('touchend', () => end());
+  el.addEventListener('touchcancel', () => end(true));
 }
-ovEl.addEventListener('touchend', () => ovSwipeEnd());
-ovEl.addEventListener('touchcancel', () => ovSwipeEnd(true));
+edgeSwipe(ovEl, -1, 'd1');
+edgeSwipe(candEl, 1, 'd8');
 tl.addEventListener('touchcancel', () => endSwipe(true));
 
 // ---------- 下方滑出的面板（筆記和編輯共用） ----------
@@ -1383,7 +1394,7 @@ tl.addEventListener('click', e => {
   const mins = START * 60 + Math.floor((e.clientY - r.top) / PX / 15) * 15;
   openEditor(null, hhmm(Math.max(0, Math.min(mins, DAY_END - 60))));
 }, true);
-// ---------- 長按拖曳：把卡片拖到另一張卡片上，兩個行程交換時段 ----------
+// ---------- 長按拖曳：拖到空白處＝改時間；停在另一張卡片正中間＝兩個行程交換時段 ----------
 const LONG_PRESS = 350, MOVE_TOL = 8;
 let drag = null, suppressClick = false;
 const cardAt = (x, y) => {
@@ -1403,7 +1414,13 @@ function dragStart(x, y, el, sub) {
       document.body.appendChild(g);
       drag.ghost = g; drag.gTop = r.top; drag.gH = r.height;
       el.classList.add('sub-dragging');
-    } else el.classList.add('dragging');
+    } else {
+      el.classList.add('dragging');
+      // 改時間用：手指抓在卡片的哪裡、卡片原本的位置和長度
+      const it = findItem(el.dataset.id)[1];
+      if (it) Object.assign(drag, { it, grab: y - el.getBoundingClientRect().top, top0: parseFloat(el.style.top), dur: m(it.e) - m(it.s) });
+
+    }
     tl.classList.add('drag-on');
     navigator.vibrate?.(10);
     autoScroll();
@@ -1420,7 +1437,7 @@ function dragMove(x, y, e) {
   drag.x = x; drag.y = y;
   // 小卡片浮在手指上方，才看得到底下標的時間
   if (drag.ghost) drag.ghost.style.transform = `translate(${x - drag.x0}px, ${y - 14 - drag.gH - drag.gTop}px)`;
-  else drag.el.style.transform = `translateY(${y - drag.y0 + scrollY - drag.sy0}px) scale(1.02)`;
+  // 整張卡片拖曳時卡片本身不動（只變半透明），由虛線框標出會放到哪裡
   let t = cardAt(x, y);
   if (drag.sub) {
     // 還在原本的卡片裡 → 放開就是取消；拖到外面 → 標出會放在幾點
@@ -1437,12 +1454,57 @@ function dragMove(x, y, e) {
     return;
   }
   const into = intoSpot(t, x, y);
-  if (t !== drag.target || into?.row !== drag.into?.row) {
+  const pos = into || !drag.it ? null : dropAt(y);
+  drag.at = pos?.at ?? null;
+  showBox(drag.at);
+  const tgt = into ? t : pos?.swap ? tl.querySelector(`.layer [data-id="${pos.swap}"]`) : null;
+  if (tgt !== drag.target || into?.row !== drag.into?.row) {
     clearDropMarks();
     if (into) { t.classList.add('drop-into'); into.row.classList.add('ins'); }
-    else t?.classList.add('drop-target');
-    drag.target = t; drag.into = into;
+    else tgt?.classList.add('drop-target');
+    drag.target = tgt; drag.into = into;
   }
+}
+// 看虛線框的「正中央」落在哪裡：落在別張卡片的中段（卡片中心上下各 1/4 長度，至少 10 分鐘）＝交換
+// 其他地方都照虛線框的時間放（5 分鐘一格，可以跟別張重疊）；開頭／結尾離別張卡片 10 分鐘內就貼齊
+const SNAP = 10;
+function dropAt(clientY) {
+  const { it, dur } = drag, others = (DATA[current] || []).filter(o => o.id !== it.id);
+  const raw = timeAtY(clientY - drag.grab, drag.el), mid = raw + dur / 2;
+  const o = others.find(o => {
+    const c = (m(o.s) + m(o.e)) / 2, r = Math.max((m(o.e) - m(o.s)) / 4, 10);
+    return Math.abs(mid - c) <= r;
+  });
+  if (o) return { swap: o.id };
+  let best = SNAP + 1, s = raw;
+  for (const x of others) for (const c of [m(x.e), m(x.s) - dur]) if (Math.abs(c - raw) < best) { best = Math.abs(c - raw); s = c; }
+  return { at: Math.max(START * 60, Math.min(s, DAY_END - dur)) };
+}
+// 虛線框：新的開始到結束時間
+let boxEl = null;
+function showBox(mins) {
+  if (mins == null) { boxEl?.remove(); boxEl = null; return; }
+  if (!boxEl) { boxEl = div('drop-box'); cardsEl.appendChild(boxEl); }
+  boxEl.style.top = yOff(mins, drag?.el) + 'px';
+  boxEl.style.height = Math.max(drag.dur * PX - 3, 28) + 'px';
+  boxEl.innerHTML = `<span><i class="ti ti-clock"></i> ${T(hhmm(mins))}–${T(hhmm(mins + drag.dur))}</span>`;
+}
+// 某個時間在時間軸上的位置（加上上方展開的卡片多出來的高度）
+const yOff = (mins, skip) => y(hhmm(mins)) + expanders.filter(ex => ex.el !== skip && ex.top < y(hhmm(mins))).reduce((a, ex) => a + (ex.extra || 0), 0);
+function moveTime(id, newS) {
+  const it = DATA[current].find(x => x.id === id);
+  if (!it || newS === m(it.s)) return false;
+  if (it.booked && !confirm(`「${it.t}」是已訂位的行程，確定要改時間嗎？`)) return false;
+  const snapshot = JSON.parse(JSON.stringify(it)), shift = newS - m(it.s);
+  it.stops?.forEach(x => x.s = hhmm(m(x.s) + shift));   // 合併區塊裡的店家一起移動
+  it.e = hhmm(m(it.e) + shift); it.s = hhmm(newS);
+  const hit = DATA[current].filter(o => o !== it && m(o.s) < m(it.e) && m(it.s) < m(o.e));
+  saveData('改時間'); renderPage(current);
+  toast(`已把「${it.t}」移到 ${T(it.s)}–${T(it.e)}${hit.length ? `，跟「${hit.map(o => o.t).join('」「')}」重疊` : ''}`, '復原', () => {
+    const cur = DATA[current].find(x => x.id === id); if (cur) Object.assign(cur, snapshot);
+    saveData(); renderPage(current); toast('已復原');
+  });
+  return true;
 }
 // 拖到「已經展開」的合併區塊／多選一卡片的清單上 → 放進去變成其中一站／一個選項
 // 只有單一地點的卡片可以放進去；放在標題列上照常是交換
@@ -1457,10 +1519,10 @@ function intoSpot(t, x, y) {
   return i < 0 ? { idx: rows.length, row: list.querySelector('.add-sub') } : { idx: i, row: rows[i] };
 }
 // 手指的位置換算成時間（扣掉上面展開的卡片多出來的高度），以 5 分鐘為單位
-function timeAtY(clientY) {
+function timeAtY(clientY, skip) {
   let y0 = clientY - tl.getBoundingClientRect().top, off = 0;
   for (const ex of [...expanders].sort((a, b) => a.top - b.top)) {
-    if (!ex.extra) continue;
+    if (!ex.extra || ex.el === skip) continue;
     if (y0 - off >= ex.top + ex.h + ex.extra) off += ex.extra;
     else if (y0 - off > ex.top + ex.h) { off += y0 - off - ex.top - ex.h; break; }
   }
@@ -1471,8 +1533,7 @@ let slotEl = null;
 function showSlot(mins) {
   if (mins == null) { slotEl?.remove(); slotEl = null; return; }
   if (!slotEl) { slotEl = div('drop-slot'); tl.appendChild(slotEl); }
-  const off = expanders.filter(ex => ex.top < y(hhmm(mins))).reduce((a, ex) => a + (ex.extra || 0), 0);
-  slotEl.style.top = y(hhmm(mins)) + off + 'px';
+  slotEl.style.top = yOff(mins, drag?.el) + 'px';
   slotEl.innerHTML = `<span>拉出來放在 ${T(hhmm(mins))}</span>`;
 }
 function clearDropMarks() {
@@ -1490,8 +1551,8 @@ function dragEnd() {
   clearTimeout(drag.timer);
   if (!drag.active) { drag = null; return; }
   suppressClick = true; setTimeout(() => suppressClick = false, 400);
-  const { el, target, into, sub, ghost, slot } = drag;
-  clearDropMarks(); showSlot(null);
+  const { el, target, into, sub, ghost, slot, at } = drag;
+  clearDropMarks(); showSlot(null); showBox(null);
   tl.classList.remove('drag-on');
   drag = null;
   if (sub) {
@@ -1501,7 +1562,8 @@ function dragEnd() {
   }
   if (target && into && mergeInto(el.dataset.id, target.dataset.id, into.idx)) return;
   if (target && !into && swapItems(el.dataset.id, target.dataset.id)) return;
-  // 沒有放在別張卡片上：彈回原位
+  if (!target && at != null && moveTime(el.dataset.id, at)) return;
+  // 時間沒變或取消：彈回原位
   el.style.transition = 'transform .2s ease';
   el.style.transform = '';
   setTimeout(() => { el.classList.remove('dragging'); el.style.transition = ''; }, 200);
@@ -1511,7 +1573,7 @@ function dragCancel() {
   clearTimeout(drag.timer);
   if (drag.active) {
     drag.el.classList.remove('dragging', 'sub-dragging'); drag.el.style.transform = ''; drag.ghost?.remove();
-    clearDropMarks(); showSlot(null); tl.classList.remove('drag-on');
+    clearDropMarks(); showSlot(null); showBox(null); tl.classList.remove('drag-on');
   }
   drag = null;
 }
