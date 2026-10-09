@@ -310,7 +310,13 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .chips.sm{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-top:8px}
 .chips.sm::-webkit-scrollbar{display:none}
 .chips.sm{gap:5px}
+/* 備選頁：跟時間軸一樣的彩色卡片，由上往下排 */
+.cand-page{padding:16px 16px 96px}
+.cand-page .blk{position:relative;left:auto;right:auto;margin-bottom:8px;padding-bottom:8px}
+.cand-page .blk .d{-webkit-line-clamp:2}
 .chips.sm .chip{height:30px;padding:0 4px;font-size:13px;flex:1 1 0;min-width:0}   /* 每個長度標籤一樣寬，平均排滿一行 */
+.chips.sm.day-chips .chip{white-space:nowrap}
+.chips.sm.day-chips .chip.cand{flex:0 0 auto;padding:0 10px}   /* 「備選」兩個字，不跟數字一樣窄 */
 .step{width:40px;height:40px;border-radius:50%;border:1px solid var(--border);background:#fff;color:var(--text);font-size:16px;
   display:flex;align-items:center;justify-content:center;cursor:pointer}
 .ed-check{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:15px}
@@ -346,7 +352,7 @@ input.sw:focus-visible{outline:2px solid var(--accent-bg);outline-offset:2px}
     <nav class="tabs"><div class="tabs-in">
       <button class="tab" data-page="overview">總覽</button><button class="tab day" data-page="d1" aria-label="第 1 天">1</button><button class="tab day" data-page="d2" aria-label="第 2 天">2</button>
       <button class="tab day" data-page="d3" aria-label="第 3 天">3</button><button class="tab day" data-page="d4" aria-label="第 4 天">4</button><button class="tab day" data-page="d5" aria-label="第 5 天">5</button>
-      <button class="tab day" data-page="d6" aria-label="第 6 天">6</button><button class="tab day" data-page="d7" aria-label="第 7 天">7</button><button class="tab day" data-page="d8" aria-label="第 8 天">8</button><button class="tab" data-page="cand">候選</button>
+      <button class="tab day" data-page="d6" aria-label="第 6 天">6</button><button class="tab day" data-page="d7" aria-label="第 7 天">7</button><button class="tab day" data-page="d8" aria-label="第 8 天">8</button><button class="tab" data-page="cand">備選</button>
     </div></nav>
     <div class="day-title" id="dayTitle"></div>
     <div class="day-sub" id="daySub"></div>
@@ -354,6 +360,7 @@ input.sw:focus-visible{outline:2px solid var(--accent-bg);outline-offset:2px}
   </header>
   <div class="tl" id="tl"></div>
   <div class="ov" id="ov" hidden></div>
+  <div class="cand-page" id="cand" hidden></div>
 </div>
 <button type="button" class="fab" id="fab" aria-label="新增行程"><i class="ti ti-plus"></i></button>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -404,7 +411,7 @@ const DAYS = [
   { date: '11/13', wd: '週五', zh: '森林文青',       en: 'Day 7.' },
   { date: '11/14', wd: '週六', zh: '回程',           en: 'Day 8.' },
 ];
-const PAGES = { overview: { en: 'Overview.', sub: '總覽' }, cand: { en: 'Maybe.', sub: '候選景點' } };
+const PAGES = { overview: { en: 'Overview', sub: '總覽' }, cand: { en: 'Maybe', sub: '備選景點' } };
 
 // ---------- 雲端資料（Google 試算表＋Apps Script） ----------
 // 打開時先顯示上次存在手機裡的資料，背景再抓最新的；修改後畫面先更新，背景再存到雲端
@@ -415,7 +422,8 @@ const TEST_SUFFIX = new URLSearchParams(location.search).get('api') ? '-test' : 
 const CACHE_KEY = 'cm-cache-v2' + TEST_SUFFIX, AUTH_KEY = 'cm-auth' + TEST_SUFFIX;
 // DATA 裡除了 d1–d8，還有 days（標題），所以走訪行程時只看天數
 const DAY_KEYS = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8'];
-const emptyData = () => { const d = { days: {} }; DAY_KEYS.forEach(k => d[k] = []); return d; };
+const ALL_KEYS = [...DAY_KEYS, 'cand'];   // 備選景點也是一組卡片，存法跟每天一樣，只是沒有排進時間軸
+const emptyData = () => { const d = { days: {} }; ALL_KEYS.forEach(k => d[k] = []); return d; };
 const clone = o => JSON.parse(JSON.stringify(o));
 let DATA = emptyData();
 let BASE = { items: {}, days: {} };   // 最後一次跟雲端一致的樣子，用來找出哪些地方改過
@@ -428,6 +436,7 @@ try {
   const c = JSON.parse(localStorage.getItem(CACHE_KEY));
   if (c && c.data) {
     DATA = c.data; BASE = c.base; NOTES = c.notes || {}; loaded = true; resumeDraft = c.draft || null;
+    DATA.cand = DATA.cand || [];
     noteQueue = c.noteQueue || {}; noteOld = c.noteOld || {};
   }
 } catch {}
@@ -492,7 +501,7 @@ const outItem = (it, day) => ({ ...JSON.parse(canon(it)), id: it.id, day });
 // 跟上次存到雲端的樣子比，找出新增／修改、刪除、改標題
 function diffOps(ref) {
   const changed = [], seen = new Set();
-  for (const k of DAY_KEYS) for (const it of DATA[k]) {
+  for (const k of ALL_KEYS) for (const it of DATA[k] || []) {
     seen.add(it.id);
     const b = ref.items[it.id];
     if (!b || b.day !== k || canon(b) !== canon(it)) changed.push(outItem(it, k));
@@ -516,7 +525,7 @@ const setFullNote = (key, full) => setNoteField(key, 'full', full);
 // 有幾張卡片／幾家店共用這份筆記
 function noteUsers(key) {
   let n = 0;
-  for (const k of DAY_KEYS) for (const it of DATA[k] || []) {
+  for (const k of ALL_KEYS) for (const it of DATA[k] || []) {
     if ((it.note || it.t) === key && !it.group && !it.alts?.length) n++;
     (it.stops || []).concat(it.alts || []).forEach(x => { if (subNoteKey(x) === key) n++; });
   }
@@ -614,8 +623,8 @@ function fullNoteField(id, key) {
 // 把目前的資料拍一張快照（格式跟 BASE 一樣）
 function snapshot() {
   const snap = { items: {}, days: {}, full: clone(DATA) };
+  for (const k of ALL_KEYS) for (const it of DATA[k] || []) snap.items[it.id] = { ...clone(it), day: k };
   for (const k of DAY_KEYS) {
-    for (const it of DATA[k]) snap.items[it.id] = { ...clone(it), day: k };
     snap.days[k] = { en: (DATA.days[k] || {}).en, zh: (DATA.days[k] || {}).zh };
   }
   return snap;
@@ -700,8 +709,10 @@ function setSyncState(st, quiet) {
   if (retry) retry.addEventListener('click', e => { e.stopPropagation(); getAuth() ? sync() : openAuth(); });
   if (st === 'saved') savedTimer = setTimeout(() => setSyncState('idle'), 2500);
   if (editing) return;
-  if (st === 'saving') toast('儲存中…', null, null, 2500);
-  if (st === 'saved') toast('已存到雲端');
+  // 畫面上正在顯示有按鈕的提示（例如「前往」「復原」）：不要用「儲存中…」蓋掉它
+  const tEl = document.getElementById('toast'), keep = tEl.classList.contains('on') && tEl.querySelector('button');
+  if (st === 'saving' && !keep) toast('儲存中…', null, null, 2500);
+  if (st === 'saved' && !keep) toast('已存到雲端');
   if (st === 'error' && !quiet) toast('有修改還沒存到雲端，會自動再試', '重試', () => getAuth() ? sync() : openAuth());
 }
 
@@ -912,11 +923,11 @@ function updateHeader(page) {
     daySub.innerHTML = `${d.date}．${d.wd}．<span id="subTheme">${esc(d.zh)}</span>`;
   } else {
     dayTitle.textContent = PAGES[page].en;
-    daySub.textContent = page === 'overview' ? `${dayInfo('d1').date}–${dayInfo('d8').date}．${DAY_KEYS.length} 天 ${DAY_KEYS.length - 1} 夜` : PAGES[page].sub;
+    daySub.textContent = page === 'cand' ? `備選景點．${(DATA.cand || []).length} 個` : page === 'overview' ? `${dayInfo('d1').date}–${dayInfo('d8').date}．${DAY_KEYS.length} 天 ${DAY_KEYS.length - 1} 夜` : PAGES[page].sub;
   }
-  fab.classList.toggle('day', isDay(page));
+  fab.classList.toggle('day', isDay(page) || page === 'cand');
   applyHeaderEditable();
-  document.getElementById('ebDay').textContent = isDay(page) ? `第 ${dayNum(page)} 天` : '';
+  document.getElementById('ebDay').textContent = isDay(page) ? `第 ${dayNum(page)} 天` : page === 'cand' ? '備選' : '';
   document.querySelector('.tab.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
   updateTabFade();
 }
@@ -931,6 +942,8 @@ function renderPage(page) {
   tl.classList.remove('sliding');
   ovEl.hidden = page !== 'overview';
   if (page === 'overview') renderOverview();
+  candEl.hidden = page !== 'cand';
+  if (page === 'cand') renderCand();
   if (!isDay(page)) { tl.style.display = 'none'; cardsEl = curLayer = null; return; }
   tl.style.display = ''; tl.style.height = baseH + 'px';
   renderGrid();
@@ -948,6 +961,30 @@ function renderPage(page) {
   }
   // 「現在時間」紅線先拿掉，之後考慮做成開關（樣式 .now 保留著）
 }
+
+// ---------- 備選景點 ----------
+// 跟每天一樣的彩色卡片，沒有時間軸、由上往下排。編輯時「日期」選某一天就排進去
+const candEl = document.getElementById('cand');
+function renderCand() {
+  if (!loaded) { candEl.innerHTML = `<div class="ov-empty">${loadErr ? '載入失敗，請檢查網路後重新整理' : '載入行程中…'}</div>`; return; }
+  const list = DATA.cand || [];
+  candEl.innerHTML = list.length ? list.map(it => {
+    const mins = m(it.e) - m(it.s), multi = it.group || it.alts?.length;
+    const names = it.group ? it.stops.map(x => x.short || x.name).join(' → ') : it.alts?.length ? it.alts.map(a => a.name).join('／') : '';
+    const tags = (it.booked ? ' · <i class="ti ti-circle-check"></i> 已訂位' : '') + (it.alert ? ` · <i class="ti ti-alert-triangle"></i> ${esc(it.alert)}` : '');
+    return `<div class="blk ${it.cls || 'eat'}${it.map && !multi ? ' has-nav' : ''}" data-id="${it.id}">
+      <div class="t">${multi ? `<i class="ti ${it.group ? 'ti-stack-2' : 'ti-arrows-split-2'}"></i> ` : ''}${esc(it.t)}${multi ? '' : noteBtn(it)}</div>
+      ${names ? `<div class="d">${esc(names)}</div>` : it.desc ? `<div class="d">${esc(it.desc)}</div>` : ''}
+      <div class="s">預計 ${T(it.s)}–${T(it.e)} · ${durLabel(mins)}${tags}</div>
+      ${it.map && !multi ? navBtn(it.map, it.t) : ''}${editIc}</div>`;
+  }).join('') : '<div class="ov-empty">還沒有備選景點。編輯行程時，「日期」選「備選」就會放到這裡</div>';
+}
+// 編輯模式下點卡片＝編輯
+candEl.addEventListener('click', e => {
+  if (!editing) return;
+  const card = e.target.closest('[data-id]'); if (!card) return;
+  e.preventDefault(); openEditor(card.dataset.id);
+});
 
 // ---------- 總覽 ----------
 const ovEl = document.getElementById('ov');
@@ -1196,7 +1233,7 @@ function openNote(title, info, mine, q) {
       <div class="full-txt">${linkify(info.full)}</div></details>` : ''}
     ${info.links ? `<div class="sh-sec">參考連結</div><div class="sh-links">${info.links.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> ${esc(t)}</a>`).join('')}</div>` : ''}`);
 }
-const findItem = id => { for (const k of DAY_KEYS) { if (!DATA[k]) continue; const it = DATA[k].find(x => x.id === id); if (it) return [k, it]; } return [null, null]; };
+const findItem = id => { for (const k of ALL_KEYS) { if (!DATA[k]) continue; const it = DATA[k].find(x => x.id === id); if (it) return [k, it]; } return [null, null]; };
 
 document.addEventListener('click', e => {
   const b = e.target.closest('.note-btn');
@@ -1586,9 +1623,9 @@ tl.addEventListener('contextmenu', e => { if (editing || e.target.closest('.laye
 const PRESS_MS = 700;
 let press = null, pressFired = false;
 function pressStart(e, x, y) {
-  if (editing || !isDay(current) || busy || sheet.classList.contains('on')) return;
+  if (editing || !(isDay(current) || current === 'cand') || busy || sheet.classList.contains('on')) return;
   if (e.target.closest('.nav, .note-btn, .add-sub')) return;
-  const row = e.target.closest('.layer .stop[data-kind]'), card = e.target.closest('.layer [data-id]');
+  const row = e.target.closest('.layer .stop[data-kind]'), card = e.target.closest('.layer [data-id], .cand-page [data-id]');
   if (!card) return;
   const el = row || card;
   press = { x, y, el, timer: setTimeout(() => pressFire(card.dataset.id, row), PRESS_MS) };
@@ -1618,6 +1655,7 @@ addEventListener('scroll', pressCancel, { passive: true });
 tl.addEventListener('click', e => { if (pressFired) { pressFired = false; e.stopPropagation(); e.preventDefault(); } }, true);
 
 fab.addEventListener('click', () => {
+  if (current === 'cand') { openEditor(null, '12:00'); return; }
   const items = itemsOf(current);
   const last = items.length ? m(items[items.length - 1].e) : 9 * 60 + 45;
   openEditor(null, hhmm(Math.min(Math.ceil(last / 15) * 15, DAY_END - 60)));
@@ -1659,12 +1697,13 @@ function openEditor(id, startAt) {
   const [, it] = id ? findItem(id) : [null, null];
   ed = it
     ? { id, isNew: false, noteKey: it.note || it.t, t: it.t, desc: it.desc || '', cls: it.cls, s: it.s, dur: m(it.e) - m(it.s), map: it.map || '', travel: it.travel || '',
-        booked: !!it.booked, alert: it.alert || '', mine: it.mine || '', group: !!it.group, pick: !it.group && !!it.alts?.length, kind: 'one', orig: { s: it.s, e: it.e } }
-    : { id: null, isNew: true, noteKey: '', t: '', desc: '', cls: 'eat', s: startAt, dur: 60, map: '', travel: '', booked: false, alert: '', mine: '', group: false, pick: false, kind: 'one' };
+        booked: !!it.booked, alert: it.alert || '', mine: it.mine || '', group: !!it.group, pick: !it.group && !!it.alts?.length, kind: 'one', orig: { s: it.s, e: it.e },
+        day: findItem(id)[0], fromDay: findItem(id)[0] }
+    : { id: null, isNew: true, noteKey: '', t: '', desc: '', cls: 'eat', s: startAt, dur: 60, map: '', travel: '', booked: false, alert: '', mine: '', group: false, pick: false, kind: 'one', day: current, fromDay: current };
   const durs = [30, 60, 90, 120, 180];
   openSheet(`
     <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">${ed.isNew ? '新增行程' : '編輯行程'}</div>
-      <div class="sh-sub">${dayInfo(current).date}．${esc(dayInfo(current).zh)}</div></div>
+      <div class="sh-sub">${current === 'cand' ? '備選景點' : `${dayInfo(current).date}．${esc(dayInfo(current).zh)}`}</div></div>
       <button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
     ${ed.booked ? '<div class="ed-lock"><i class="ti ti-lock"></i> 這是已訂位的行程，改時間前請先確認</div>' : ''}
     ${ed.group || ed.pick ? '' : `
@@ -1686,6 +1725,8 @@ function openEditor(id, startAt) {
     ${ed.group ? '<div class="ed-hint"><i class="ti ti-info-circle"></i> 這是合併區塊。要改裡面的店家，請展開後直接點那一家</div>' : `
     <div class="ed-field"><span class="ed-lab">類型</span><div class="chips" id="edCls">
       ${TYPES.map(([k, n]) => `<button type="button" class="chip ${k}${k === ed.cls ? ' on' : ''}" data-v="${k}">${n}</button>`).join('')}</div></div>`}
+    <div class="ed-field"><span class="ed-lab">日期 <span class="ed-lab-hint">選別天就搬過去，時間不變</span></span>
+      <div class="chips sm day-chips" id="edDay">${ALL_KEYS.map(k => `<button type="button" class="chip${k === ed.day ? ' on' : ''}${k === 'cand' ? ' cand' : ''}" data-v="${k}">${k === 'cand' ? '備選' : dayNum(k)}</button>`).join('')}</div></div>
     <div class="ed-field"><span class="ed-lab">時間</span>
       <div class="ed-time"><input id="edS" type="time" step="300" value="${T(ed.s)}" aria-label="開始時間">
         <span class="ed-arrow">→</span><span class="ed-endbox" id="edEnd" aria-label="結束時間（自動算）"></span>${ed.group ? '' : `
@@ -1735,7 +1776,7 @@ function wireEditor() {
     // 時間有變時，才問要不要把後面的行程一起移動
     if ($('edPushWrap')) {
       const delta = eMin - m(ed.orig.e);
-      $('edPushWrap').hidden = delta === 0 || !laterItems().length;
+      $('edPushWrap').hidden = delta === 0 || !laterItems().length || ed.day !== ed.fromDay;
       $('edPushTxt').textContent = delta ? `（${delta > 0 ? '往後' : '提前'} ${durLabel(Math.abs(delta))}）` : '';
     }
     $('edTimeErr').hidden = true;
@@ -1760,6 +1801,12 @@ function wireEditor() {
     if (multi) $('edGT').focus();
   });
   $('edGT')?.addEventListener('input', () => { $('edGTErr').hidden = true; });
+  $('edDay').addEventListener('click', e => {
+    const c = e.target.closest('.chip'); if (!c) return;
+    ed.day = c.dataset.v;
+    sheet.querySelectorAll('#edDay .chip').forEach(x => x.classList.toggle('on', x === c));
+    refresh();
+  });
   $('edDur')?.addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) { ed.dur = +c.dataset.v; refresh(); } });
   sheet.querySelectorAll('.step').forEach(b => b.addEventListener('click', () => { ed.dur = Math.max(5, ed.dur + +b.dataset.d); refresh(); }));
   $('edS').addEventListener('input', refresh);
@@ -1801,7 +1848,7 @@ function saveEditor() {
   const sMin = $('edS').value ? fromInput($('edS').value) : m(ed.s), eMin = sMin + ed.dur;
   const timeErr = msg => { $('edTimeErr').textContent = msg; $('edTimeErr').hidden = false; };
   if (eMin > DAY_END) return timeErr('最晚只能排到凌晨 05:00');
-  const push = $('edPush')?.checked;
+  const push = $('edPush')?.checked && ed.day === ed.fromDay;
   const delta = ed.isNew ? 0 : eMin - m(ed.orig.e);
   if (push && laterItems().some(x => m(x.e) + delta > DAY_END)) return timeErr('順延後有行程會超過凌晨 05:00，請調整一下');
   if (!ed.isNew && ed.booked && (hhmm(sMin) !== ed.orig.s || hhmm(eMin) !== ed.orig.e) &&
@@ -1820,23 +1867,36 @@ function saveEditor() {
     Object.assign(it, fields, { t: gt, desc: '', map: '', mine: '', note: '' });
     if (ed.kind === 'group') { it.group = true; it.stops = [{ ...first, desc: undefined, s: fields.s, dur: ed.dur }]; delete it.alts; }   // 合併區塊的每一站沒有描述欄位
     else { it.alts = [{ ...first, info: fields.alert }]; it.alert = ''; }   // 「只收現金」這類提醒是那一家店的，跟著選項走
-    if (ed.isNew) DATA[current].push(it);
+    if (ed.isNew) DATA[ed.day].push(it); else moveDay(it.id, ed.fromDay, ed.day);
     saveData(); closeSheet(); renderPage(current);
     toast(`已建立「${gt}」，展開後可以加入更多${ed.kind === 'group' ? '站' : '選項'}`);
     return;
   }
   if (ed.isNew) {
-    DATA[current].push({ id: uid(), ...fields });
+    DATA[ed.day].push({ id: uid(), ...fields });
   } else {
     if (push && delta) laterItems().forEach(x => { x.s = hhmm(m(x.s) + delta); x.e = hhmm(m(x.e) + delta); });
     // 合併區塊整組移動：裡面每一站跟著平移
     if (ed.group) { const shift = sMin - m(ed.orig.s); if (shift) findItem(ed.id)[1].stops.forEach(x => x.s = hhmm(m(x.s) + shift)); }
     Object.assign(findItem(ed.id)[1], fields);
+    moveDay(ed.id, ed.fromDay, ed.day);
   }
   saveData(); closeSheet(); renderPage(current);
+  if (ed.day !== current) {
+    const where = ed.day === 'cand' ? '備選' : `第 ${dayNum(ed.day)} 天`, to = ed.day;
+    toast(`已${ed.isNew ? '新增' : '移'}到${where}`, '前往', () => { location.hash = to; });
+    return;
+  }
   toast(ed.isNew ? '已新增' : push && delta ? `已儲存，後面 ${laterItems().length} 個行程一起${delta > 0 ? '順延' : '提前'}` : '已儲存');
 }
 
+// 換天：從原本那天拿出來，放到新的那天（時間不變）
+function moveDay(id, from, to) {
+  if (from === to) return;
+  const src = DATA[from], i = src.findIndex(x => x.id === id);
+  if (i < 0) return;
+  DATA[to].push(src.splice(i, 1)[0]);
+}
 function deleteItem() {
   const day = current, list = DATA[day], idx = list.findIndex(x => x.id === ed.id), removed = list[idx];
   list.splice(idx, 1);
