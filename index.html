@@ -358,12 +358,22 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .cp-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--c-fg,var(--accent-fg))}
 .cp-name{min-width:0;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cp-dur{flex:none;font-size:12px;opacity:.7}
-.day-pick{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:16px 0 8px}
-.dp-day{display:flex;align-items:center;gap:10px;min-width:0;min-height:56px;padding:6px 10px;border:1px solid var(--border);border-radius:10px;background:#fff;text-align:left;font:inherit;color:inherit;cursor:pointer}
-.dp-day b{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--accent-fg);color:#fff;font-size:14px}
-.dp-day span{display:flex;flex-direction:column;font-size:13px;font-weight:600;min-width:0}
-.dp-day small{font-size:11px;font-weight:400;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dp-day:active{background:var(--hover,#f5efe8)}
+.day-pick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.dp-day{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:0;height:52px;border:1px solid var(--border);border-radius:10px;background:#fff;font:inherit;color:inherit;cursor:pointer}
+.dp-day b{font-size:16px}
+.dp-day small{font-size:11px;opacity:.7}
+.dp-day.on{background:var(--accent-fg);border-color:var(--accent-fg);color:#fff}
+.dp-day.on small{opacity:.9}
+.dp-theme{font-size:13px;color:var(--muted);margin-top:8px}
+.dp-theme:empty{display:none}
+.dp-list{display:flex;flex-direction:column;gap:4px}
+.dp-row{display:flex;align-items:center;gap:8px;min-height:40px;padding:4px 10px;border:0;border-radius:8px;background:var(--c-bg);color:var(--c-fg);font:inherit;text-align:left;cursor:pointer;width:100%}
+.dp-row .tm{flex:none;font-size:12px;font-variant-numeric:tabular-nums;opacity:.8}
+.dp-row .nm{flex:1;min-width:0;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dp-row .tag{flex:none;font-size:11px;font-weight:600;padding:1px 6px;border-radius:999px;background:#fff}
+.dp-row.me{background:#fff;border:2px dashed var(--c-fg);cursor:default}
+.dp-row.hit{box-shadow:inset 0 0 0 2px #E24B4A}
+.dp-row.hit .tag{color:#E24B4A}
 .chips.sm.day-chips .chip.cand{flex:0 0 auto;padding:0 10px}   /* 「備選」兩個字，不跟數字一樣窄 */
 .step{width:40px;height:40px;border-radius:50%;border:1px solid var(--border);background:#fff;color:var(--text);font-size:16px;
   display:flex;align-items:center;justify-content:center;cursor:pointer}
@@ -1030,9 +1040,12 @@ function renderCand() {
 // 編輯模式下點卡片＝編輯
 candEl.addEventListener('click', e => {
   if (e.target.closest('#candImport')) { if (getAuth()) openImport(); else openAuth(openImport); return; }
-  if (!editing) return;
-  const card = e.target.closest('[data-id]'); if (!card) return;
-  e.preventDefault(); openEditor(card.dataset.id);
+  const card = e.target.closest('[data-id]'); if (!card || e.target.closest('.nav, .note-btn')) return;
+  e.preventDefault();
+  // 編輯模式：點了編輯；一般模式：點了選要排到哪天（長按＝編輯）
+  if (editing) { openEditor(card.dataset.id); return; }
+  const go = () => openDayPicker(card.dataset.id);
+  if (getAuth()) go(); else openAuth(go);
 });
 
 // ---------- 總覽 ----------
@@ -1746,7 +1759,7 @@ function pressFire(id, row) {
   const el = press?.el; pressCancel();
   pressFired = true; setTimeout(() => pressFired = false, 600);
   navigator.vibrate?.(10);
-  const open = () => row ? openSubEditor(id, row.dataset.kind, +row.dataset.idx) : current === 'cand' ? openDayPicker(id) : openEditor(id);
+  const open = () => row ? openSubEditor(id, row.dataset.kind, +row.dataset.idx) : openEditor(id);
   if (!findItem(id)[1]) return;
   if (getAuth()) open(); else openAuth(open);
 }
@@ -2049,7 +2062,7 @@ function openImport() {
     <div class="ed-actions">
       <button type="button" class="btn ghost ed-cancel">取消</button>
       <button type="button" class="btn primary" id="imAdd" disabled>加入備選</button>
-    </div>`, '#imLinks');
+    </div>`);   // 不自動跳出鍵盤，不然會把面板擋住
   const $ = id => sheet.querySelector('#' + id), list = $('imList');
   const refresh = () => {
     const n = list.querySelectorAll('.im-row.ready .im-use:checked').length;
@@ -2120,23 +2133,71 @@ function clashText(id, day) {
   return hit.length ? `，跟「${hit.map(o => o.t).join('」「')}」重疊` : '';
 }
 // 備選頁長按：直接挑要排到第幾天（時間不變），或進去編輯
+// 備選頁點卡片：先選第幾天，下面接著選時間（列出那天的行程，看得到會插在哪裡）
 function openDayPicker(id) {
   const it = (DATA.cand || []).find(x => x.id === id); if (!it) return;
+  const dur = m(it.e) - m(it.s);
+  let day = null;
   openSheet(`
-    <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">排到第幾天？</div>
-      <div class="sh-sub">${esc(it.t)}．${T(it.s)}–${T(it.e)}（時間不變，之後可以再拖曳調整）</div></div>
+    <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">排進行程</div>
+      <div class="sh-sub">${esc(it.t)}．${durLabel(dur)}</div></div>
       <button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
-    <div class="day-pick">${DAY_KEYS.map(k => { const d = dayInfo(k); return `<button type="button" class="dp-day" data-v="${k}">
-      <b>${dayNum(k)}</b><span>${d.date} ${d.wd}<small>${esc(d.zh || '')}</small></span></button>`; }).join('')}</div>
-    <div class="ed-actions"><button type="button" class="btn ghost" id="dpEdit"><i class="ti ti-pencil"></i> 編輯內容</button></div>`);
+    <div class="ed-field"><span class="ed-lab">第幾天</span>
+      <div class="day-pick">${DAY_KEYS.map(k => { const d = dayInfo(k); return `<button type="button" class="dp-day" data-v="${k}" aria-pressed="false">
+        <b>${dayNum(k)}</b><small>${d.date}</small></button>`; }).join('')}</div>
+      <div class="dp-theme" id="dpTheme"></div></div>
+    <div id="dpTime">
+      <div class="ed-field"><span class="ed-lab">時間</span>
+        <div class="ed-time"><input id="dpS" type="time" step="300" aria-label="開始時間"><span class="ed-arrow">→</span><span class="ed-endbox" id="dpEnd"></span></div></div>
+      <div class="ed-field"><span class="ed-lab">那天的行程 <span class="ed-lab-hint">點一個，就接在它後面</span></span>
+        <div class="dp-list" id="dpList"></div></div>
+    </div>
+    <div class="ed-actions">
+      <button type="button" class="btn ghost" id="dpEdit"><i class="ti ti-pencil"></i> 編輯內容</button>
+      <button type="button" class="btn primary" id="dpGo">排入</button>
+    </div>`);
+  const $ = x => sheet.querySelector('#' + x);
+  const start = () => $('dpS').value ? fromInput($('dpS').value) : m(it.s);
+  const draw = () => {
+    const s = start(), e = s + dur, items = [...(DATA[day] || [])].sort((a, b) => m(a.s) - m(b.s));
+    $('dpEnd').textContent = clock(e);
+    const rows = items.map(o => ({ o, s: m(o.s) }));
+    rows.push({ me: true, s });
+    rows.sort((a, b) => a.s - b.s || (a.me ? 1 : -1));
+    $('dpList').innerHTML = rows.map(r => r.me
+      ? `<div class="dp-row me ${it.cls || 'eat'}"><span class="tm">${T(hhmm(s))}–${T(hhmm(e))}</span><span class="nm">${esc(it.t)}</span><span class="tag">放這裡</span></div>`
+      : `<button type="button" class="dp-row ${r.o.cls || 'eat'}${m(r.o.s) < e && s < m(r.o.e) ? ' hit' : ''}" data-end="${m(r.o.e)}">
+          <span class="tm">${T(r.o.s)}–${T(r.o.e)}</span><span class="nm">${esc(r.o.t)}</span>${m(r.o.s) < e && s < m(r.o.e) ? '<span class="tag">重疊</span>' : ''}</button>`).join('')
+      || '<div class="ov-empty">這天還沒有行程</div>';
+    $('dpGo').disabled = e > DAY_END;
+    $('dpGo').textContent = e > DAY_END ? '超過凌晨 05:00' : `排進第 ${dayNum(day)} 天`;
+  };
   sheet.querySelector('.day-pick').addEventListener('click', e => {
     const b = e.target.closest('.dp-day'); if (!b) return;
-    const to = b.dataset.v;
-    moveDay(id, 'cand', to);
-    saveData(`排到第 ${dayNum(to)} 天`); closeSheet(); renderPage(current); updateHeader(current);
-    toast(`已把「${it.t}」排到第 ${dayNum(to)} 天${clashText(id, to)}`, '前往', () => { location.hash = to; });
+    day = b.dataset.v;
+    sheet.querySelectorAll('.dp-day').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); });
+    const d = dayInfo(day);
+    $('dpTheme').textContent = `${d.date} ${d.wd}．${d.zh || ''}`;
+    draw();
   });
-  sheet.querySelector('#dpEdit').addEventListener('click', () => openEditor(id));
+  $('dpS').addEventListener('input', draw);
+  $('dpList').addEventListener('click', e => {
+    const r = e.target.closest('button.dp-row'); if (!r) return;
+    $('dpS').value = T(hhmm(Math.min(+r.dataset.end, DAY_END - dur))); draw();
+  });
+  $('dpGo').addEventListener('click', () => {
+    if (!day) return;
+    const s = start();
+    it.s = hhmm(s); it.e = hhmm(s + dur);
+    moveDay(id, 'cand', day);
+    const to = day;
+    saveData(`排到第 ${dayNum(to)} 天`); closeSheet(); renderPage(current); updateHeader(current);
+    toast(`已把「${it.t}」排到第 ${dayNum(to)} 天 ${T(it.s)}${clashText(id, to)}`, '前往', () => { location.hash = to; });
+  });
+  $('dpEdit').addEventListener('click', () => openEditor(id));
+  // 一打開就先選好第 1 天，下面的時間和行程直接出現，點別天只是換內容，畫面不會跳
+  $('dpS').value = T(it.s);
+  sheet.querySelector('.dp-day').click();
 }
 // 換天：從原本那天拿出來，放到新的那天（時間不變）
 function moveDay(id, from, to) {
