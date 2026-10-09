@@ -318,6 +318,24 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .cand-page{padding:16px 16px 96px;touch-action:pan-y pinch-zoom}
 .cand-page .blk{position:relative;left:auto;right:auto;margin-bottom:8px;padding-bottom:8px}
 .cand-page .blk .d{-webkit-line-clamp:2}
+.btn.cand-import{width:100%;margin-bottom:12px;gap:6px}
+.btn.im-go{width:100%;margin-top:8px;gap:6px}
+.im-list{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+.im-list:empty{display:none}
+.im-row{position:relative;padding:10px;border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;gap:6px}
+.im-row input[type=text],.im-row select{width:100%;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font:inherit;font-size:16px;background:#fff;color:inherit;min-width:0}
+.im-top{display:flex;align-items:center;gap:8px}
+.im-top .im-use{flex:none;width:20px;height:20px;accent-color:var(--accent-fg)}
+.im-top .im-name{font-weight:600}
+.im-row2{display:flex;gap:6px}
+.im-note{font-size:12px;color:var(--muted)}
+.im-note:empty{display:none}
+.im-wait{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:2px;padding-right:28px}
+.im-wait span{font-size:11px;word-break:break-all;opacity:.8}
+.im-row.bad .im-wait{color:#B23B3B}
+.im-x{position:absolute;top:6px;right:6px;width:32px;height:32px;border:0;border-radius:50%;background:transparent;color:inherit;font-size:16px;cursor:pointer}
+.spin{display:inline-block;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .chips.sm .chip{height:30px;padding:0 4px;font-size:13px;flex:1 1 0;min-width:0}   /* 每個長度標籤一樣寬，平均排滿一行 */
 .chips.sm.day-chips .chip{white-space:nowrap}
 .btn.cand-open{width:100%;justify-content:flex-start;gap:8px;margin-top:16px}   /* 跟其他欄位一樣隔 16px */
@@ -476,8 +494,8 @@ const getAuth = () => { try { return JSON.parse(localStorage.getItem(AUTH_KEY));
 const setAuth = a => { try { a ? localStorage.setItem(AUTH_KEY, JSON.stringify(a)) : localStorage.removeItem(AUTH_KEY); } catch {} };
 
 // 呼叫 Apps Script：用 text/plain 送 JSON，瀏覽器才不會先送預檢請求（Apps Script 不支援）
-async function api(body) {
-  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 40000);
+async function api(body, ms = 40000) {
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), ms);
   try {
     const r = body
       ? await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), signal: ctl.signal })
@@ -998,7 +1016,7 @@ const candEl = document.getElementById('cand');
 function renderCand() {
   if (!loaded) { candEl.innerHTML = `<div class="ov-empty">${loadErr ? '載入失敗，請檢查網路後重新整理' : '載入行程中…'}</div>`; return; }
   const list = DATA.cand || [];
-  candEl.innerHTML = list.length ? list.map(it => {
+  candEl.innerHTML = `<button type="button" class="btn ghost cand-import" id="candImport"><i class="ti ti-map-pin-plus"></i> 從 Google 地圖導入</button>` + (list.length ? list.map(it => {
     const mins = m(it.e) - m(it.s), multi = it.group || it.alts?.length;
     const names = it.group ? it.stops.map(x => x.short || x.name).join(' → ') : it.alts?.length ? it.alts.map(a => a.name).join('／') : '';
     const tags = (it.booked ? ' · <i class="ti ti-circle-check"></i> 已訂位' : '') + (it.alert ? ` · <i class="ti ti-alert-triangle"></i> ${esc(it.alert)}` : '');
@@ -1007,10 +1025,11 @@ function renderCand() {
       ${names ? `<div class="d">${esc(names)}</div>` : it.desc ? `<div class="d">${esc(it.desc)}</div>` : ''}
       <div class="s">預計 ${T(it.s)}–${T(it.e)} · ${durLabel(mins)}${tags}</div>
       ${it.map && !multi ? navBtn(it.map, it.t) : ''}${editIc}</div>`;
-  }).join('') : '<div class="ov-empty">還沒有備選景點。編輯行程時，「日期」選「備選」就會放到這裡</div>';
+  }).join('') : '<div class="ov-empty">還沒有備選景點。可以從 Google 地圖導入，或編輯行程時「日期」選「備選」</div>');
 }
 // 編輯模式下點卡片＝編輯
 candEl.addEventListener('click', e => {
+  if (e.target.closest('#candImport')) { if (getAuth()) openImport(); else openAuth(openImport); return; }
   if (!editing) return;
   const card = e.target.closest('[data-id]'); if (!card) return;
   e.preventDefault(); openEditor(card.dataset.id);
@@ -2016,6 +2035,84 @@ function saveEditor() {
   toast(ed.isNew ? '已新增' : push && delta ? `已儲存，後面 ${laterItems().length} 個行程一起${delta > 0 ? '順延' : '提前'}` : '已儲存');
 }
 
+// ---------- 從 Google 地圖導入（備選頁） ----------
+// 貼上一個或多個分享連結 → 雲端解開連結拿店名，再請 Gemini 查描述／類型／提醒 → 預覽可以改 → 加入備選
+function openImport() {
+  openSheet(`
+    <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">從 Google 地圖導入</div>
+      <div class="sh-sub">在 Google 地圖按「分享」→「複製連結」，貼在下面，一行一個（最多 10 個）</div></div>
+      <button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
+    <label class="ed-field"><span class="ed-lab">Google 地圖連結 <span class="ed-lab-hint">也可以直接打店名</span></span>
+      <textarea id="imLinks" rows="3" placeholder="https://maps.app.goo.gl/…" autocomplete="off" spellcheck="false"></textarea></label>
+    <button type="button" class="btn ghost im-go" id="imGo"><i class="ti ti-search"></i> 查詢</button>
+    <div class="im-list" id="imList"></div>
+    <div class="ed-actions">
+      <button type="button" class="btn ghost ed-cancel">取消</button>
+      <button type="button" class="btn primary" id="imAdd" disabled>加入備選</button>
+    </div>`, '#imLinks');
+  const $ = id => sheet.querySelector('#' + id), list = $('imList');
+  const refresh = () => {
+    const n = list.querySelectorAll('.im-row.ready .im-use:checked').length;
+    $('imAdd').disabled = !n; $('imAdd').textContent = n ? `加入備選（${n}）` : '加入備選';
+  };
+  $('imGo').addEventListener('click', () => {
+    const text = $('imLinks').value, links = [];
+    for (const line of text.split(/\n+/)) {
+      const urls = line.match(/https?:\/\/\S+/g);
+      (urls || [line.trim()]).forEach(u => { if (u && !links.includes(u)) links.push(u); });
+    }
+    if (!links.length) { $('imLinks').focus(); return; }
+    $('imLinks').value = '';
+    links.slice(0, 10).forEach(link => {
+      const row = div('im-row loading', `<div class="im-wait"><i class="ti ti-loader-2 spin"></i> 查詢中… <span>${esc(link)}</span></div>`);
+      list.appendChild(row);
+      lookupOne(row, link);
+    });
+    if (links.length > 10) toast('一次最多 10 個，多的請再貼一次');
+  });
+  async function lookupOne(row, link) {
+    try {
+      const r = await api({ ...getAuth(), action: 'lookupPlace', link }, 90000);   // 要等搜尋＋AI，給久一點
+      fillRow(row, r.place, r.note);
+    } catch (err) {
+      row.className = 'im-row bad';
+      row.innerHTML = `<div class="im-wait"><i class="ti ti-alert-circle"></i> ${esc(err.code === 'network' ? '連不上，請再試一次' : err.message)}<span>${esc(link)}</span></div>
+        <button type="button" class="im-x" aria-label="移除"><i class="ti ti-x"></i></button>`;
+    }
+    refresh();
+  }
+  function fillRow(row, p, note) {
+    const dur = p.dur || 60, durs = [...new Set([30, 60, 90, 120, 180, dur])].sort((a, b) => a - b);
+    const dup = ALL_KEYS.find(k => (DATA[k] || []).some(x => x.t.toLowerCase() === p.name.toLowerCase()));
+    row.className = 'im-row ready';
+    row.dataset.map = p.map || ''; row.dataset.area = p.area || '';
+    row.innerHTML = `
+      <label class="im-top"><input type="checkbox" class="im-use"${dup ? '' : ' checked'}><input type="text" class="im-name" value="${esc(p.name)}" aria-label="名稱"></label>
+      <input type="text" class="im-desc" value="${esc(p.desc || '')}" placeholder="描述（顯示在卡片上）" aria-label="描述">
+      <div class="im-row2">
+        <select class="im-cls" aria-label="類型">${TYPES.map(([k, n]) => `<option value="${k}"${k === (p.cls || 'other') ? ' selected' : ''}>${n}</option>`).join('')}</select>
+        <select class="im-dur" aria-label="停留時間">${durs.map(d => `<option value="${d}"${d === dur ? ' selected' : ''}>${durLabel(d)}</option>`).join('')}</select>
+      </div>
+      <input type="text" class="im-alert" value="${esc(p.alert || '')}" placeholder="重點提醒，例如 17:00 開門" aria-label="重點提醒">
+      <div class="im-note">${dup ? `<i class="ti ti-alert-triangle"></i> ${dup === 'cand' ? '備選' : `第 ${dayNum(dup)} 天`}已經有這個地點了` : note ? `<i class="ti ti-info-circle"></i> ${esc(note)}` : p.ai ? '<i class="ti ti-sparkles"></i> AI 查的資料，加入前請看一下對不對' : ''}</div>`;
+  }
+  list.addEventListener('change', refresh);
+  list.addEventListener('click', e => { const x = e.target.closest('.im-x'); if (x) { x.closest('.im-row').remove(); refresh(); } });
+  $('imAdd').addEventListener('click', () => {
+    const rows = [...list.querySelectorAll('.im-row.ready')].filter(r => r.querySelector('.im-use').checked);
+    const added = [];
+    for (const r of rows) {
+      const q = c => r.querySelector(c).value.trim(), dur = +q('.im-dur');
+      const t = q('.im-name'); if (!t) continue;
+      DATA.cand.push({ id: uid(), t, desc: q('.im-desc'), cls: q('.im-cls'), s: '12:00', e: hhmm(12 * 60 + dur), map: r.dataset.map || t,
+        travel: '', booked: false, alert: q('.im-alert'), mine: r.dataset.area ? `位置：${r.dataset.area}` : '', note: '' });
+      added.push(t);
+    }
+    if (!added.length) return;
+    saveData('從 Google 地圖導入'); closeSheet(); renderPage(current); updateHeader(current);
+    toast(`已加入 ${added.length} 個備選`);
+  });
+}
 // 跟同一天哪些行程時間重疊（提示用）
 function clashText(id, day) {
   const it = (DATA[day] || []).find(x => x.id === id);
