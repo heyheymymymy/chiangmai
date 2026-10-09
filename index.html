@@ -162,9 +162,21 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .sheet.dlg.on{transform:none;opacity:1;pointer-events:auto}
 .sheet.dlg .grab{display:none}
 .sheet.dlg .ed-actions{position:static;margin-top:18px;padding:12px 18px 16px;border-radius:0 0 18px 18px}
-.grab{width:38px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 12px;position:relative}
-.grab::after{content:"";position:absolute;inset:-14px -60px}   /* 拉桿很細，實際可以按的範圍放大 */
+/* 拉桿：固定在面板最上面，內容往上捲時不會跟著捲走；整條白色橫條都可以按著往下拉 */
+.grab{position:sticky;top:-8px;z-index:3;height:22px;margin:-8px -18px 2px;background:#fff;border-radius:18px 18px 0 0}
+.grab::before{content:"";position:absolute;left:50%;top:8px;width:38px;height:4px;margin-left:-19px;border-radius:2px;background:var(--border)}
 .ed-full textarea{font-size:14px}
+/* 照片：筆記最上方的大照片（直角）；編輯面板裡的預覽 */
+.sh-photo{display:block;width:100%;aspect-ratio:339/206;object-fit:cover;background:var(--line);margin:0 0 14px}
+.ph-prev{position:relative}
+.ph-badge{position:absolute;right:8px;bottom:8px;padding:2px 10px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;font-size:12px}
+.ph-prev img{display:block;width:100%;aspect-ratio:339/206;object-fit:cover;background:var(--line)}
+.ph-prev.empty{display:flex;align-items:center;justify-content:center;height:64px;border:1px dashed var(--border);border-radius:10px;font-size:13px;color:var(--muted)}
+.ph-row{display:flex;gap:8px;margin-top:8px}
+.ph-row input{flex:1;min-width:0}
+.ph-up{flex:none;font-size:15px;font-weight:500}
+.ph-st{font-size:12px;color:var(--muted);margin-top:4px;min-height:0}
+.ph-st:empty{display:none}
 .ed-full .ed-hint{margin:0 0 8px}
 .sh-head{display:flex;gap:10px;align-items:flex-start}
 .sh-title{font-size:18px;font-weight:600;line-height:1.35}
@@ -280,11 +292,37 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .ed-row{display:flex;align-items:center;gap:12px}
 .ed-to{font-size:15px;color:var(--text2)}
 .ed-dur{min-width:96px;text-align:center;font-size:15px;font-weight:600}
+/* 時間：一行「開始 → 結束 ｜ − 長度 +」，三個格子差不多寬、撐滿整行（長度那格稍寬，放得下「1h40m」）；結束是自動算的（灰色、不能點）。下一行長度快選 */
+.ed-time{display:flex;align-items:center;gap:4px}
+.sheet .ed-time input[type=time]{min-width:0;width:0;flex:1 1 0;padding:10px 4px;text-align:center}
+.ed-time input[type=time]::-webkit-calendar-picker-indicator{display:none}   /* 電腦版瀏覽器的時鐘圖示會把格子撐寬；點格子一樣會跳出選擇器 */
+.ed-time input[type=time]::-webkit-date-and-time-value{text-align:center}
+.ed-arrow{color:var(--muted);flex:none;font-size:14px;margin:0 6px}
+.ed-endbox{flex:1 1 0;min-width:0;font-size:16px;padding:10px 4px;border:1px solid var(--line);border-radius:10px;background:#F7F5F2;color:var(--muted);line-height:normal;white-space:nowrap;text-align:center;overflow:hidden}
+.ed-mid{font-size:12px;color:var(--muted);margin-top:4px}
+.ed-len{flex:1.2 1 0;min-width:0;display:flex;align-items:center;justify-content:space-between;margin-left:6px;height:44px}
+.ed-len .step{width:26px;height:26px;flex:none;border:0;background:var(--line)}
+.ed-len .ed-dur{min-width:0;font-size:14px;white-space:nowrap}
+.chips.sm{flex:1;min-width:0;margin:0 0 0 4px}
+.chips.sm{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-top:8px}
+.chips.sm::-webkit-scrollbar{display:none}
+.chips.sm{gap:5px}
+.chips.sm .chip{height:30px;padding:0 4px;font-size:13px;flex:1 1 0;min-width:0}   /* 每個長度標籤一樣寬，平均排滿一行 */
 .step{width:40px;height:40px;border-radius:50%;border:1px solid var(--border);background:#fff;color:var(--text);font-size:16px;
   display:flex;align-items:center;justify-content:center;cursor:pointer}
 .ed-check{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:15px}
 .ed-check input{width:20px;height:20px;accent-color:var(--accent-fg)}
 .ed-check span{color:var(--muted);font-size:13px}
+/* 開關（已訂位、後面的行程自動移動） */
+/* 編輯面板的分段線：整條拉到面板左右邊緣 */
+.ed-sep{border:0;border-top:1px solid var(--line);margin:20px -18px 0}
+.ed-switch{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:15px;cursor:pointer}
+.ed-switch small{color:var(--muted);font-size:13px}
+input.sw{-webkit-appearance:none;appearance:none;width:44px;height:26px;margin:0;border-radius:13px;background:var(--border);position:relative;flex:none;cursor:pointer;transition:background .2s}
+input.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s}
+input.sw:checked{background:var(--accent-fg)}
+input.sw:checked::after{transform:translateX(18px)}
+input.sw:focus-visible{outline:2px solid var(--accent-bg);outline-offset:2px}
 .ed-lock,.ed-hint{margin-top:12px;padding:9px 12px;border-radius:10px;font-size:13px;line-height:1.5}
 .ed-lock{background:#FFF1E2;color:#8A4B22}
 .ed-hint{background:var(--line);color:var(--text2)}
@@ -336,6 +374,7 @@ const hhmm = n => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 6
 // 過了午夜還算同一天：記成 24:30、25:15，畫面上顯示 00:30、01:15。一天最晚排到隔天 05:00
 const DAY_END = 29 * 60, NIGHT = 5 * 60;
 const T = s => hhmm(m(s) % (24 * 60));                       // 顯示用
+const clock = n => new Date(2026, 0, 1, Math.floor(n / 60) % 24, n % 60).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });   // 結束時間：跟時間輸入框同樣的格式
 const fromInput = v => { const n = m(v); return n < NIGHT ? n + 24 * 60 : n; };   // 時間輸入框：00:00–04:59 當成當天深夜
 const durLabel = n => n < 60 ? `${n} 分` : n % 60 === 0 ? `${n / 60}h` : n % 30 === 0 ? `${Math.floor(n / 60)}.5h` : `${Math.floor(n / 60)}h${n % 60}m`;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -349,7 +388,7 @@ const TYPES = [['eat', '吃'], ['spa', '按摩'], ['cafe', '咖啡'], ['bar', '�
 // 筆記資料（從試算表的 Notes 分頁載入）：orig＝原文名稱，points＝重點整理，links＝參考連結
 let NOTES = {};
 // 有重點或連結才算有筆記（只有原文名稱的不出現筆記按鈕）
-const richNote = k => { const n = NOTES[k]; return n && (n.points || n.links || n.full) ? n : null; };
+const richNote = k => { const n = NOTES[k]; return n && (n.points || n.links || n.full || n.photo) ? n : null; };
 
 // ---------- 行程資料 ----------
 const DAYS = [
@@ -426,7 +465,7 @@ function applyServer(r) {
   NOTES = {};
   for (const [k, n] of Object.entries(r.notes || {})) {
     NOTES[k] = { orig: n.orig, points: n.points && n.points.length ? n.points : undefined, links: n.links && n.links.length ? n.links : undefined,
-                 full: n.full || undefined };
+                 full: n.full || undefined, photo: n.photo || undefined };
   }
   loaded = true; loadErr = false; cache();
 }
@@ -462,14 +501,15 @@ function diffOps(ref) {
 const pendingOps = () => { const o = diffOps(BASE), n = Object.keys(noteQueue).length; o.notes = n; o.count += n; return o; };   // 還沒存到雲端的
 const draftCount = () => editStart ? diffOps(editStart).count + Object.keys(noteOld).length : 0;   // 這次編輯改了幾處
 // 改完整筆記：有變才記下來，回傳有沒有改
-function setFullNote(key, full) {
+function setNoteField(key, field, value) {
   const cur = NOTES[key] || {};
-  if ((cur.full || '') === full) return false;
+  if ((cur[field] || '') === value) return false;
   if (editing && !(key in noteOld)) noteOld[key] = NOTES[key] ? clone(NOTES[key]) : null;
-  NOTES[key] = { ...cur, full: full || undefined };
+  NOTES[key] = { ...cur, [field]: value || undefined };
   noteQueue[key] = true;
   return true;
 }
+const setFullNote = (key, full) => setNoteField(key, 'full', full);
 // 有幾張卡片／幾家店共用這份筆記
 function noteUsers(key) {
   let n = 0;
@@ -478,6 +518,87 @@ function noteUsers(key) {
     (it.stops || []).concat(it.alts || []).forEach(x => { if (subNoteKey(x) === key) n++; });
   }
   return n;
+}
+// 編輯視窗裡的「照片」：放在筆記最上方。可以貼圖片網址，也可以從手機上傳（存到雲端硬碟）
+function photoField(id, key) {
+  const url = NOTES[key]?.photo || '', n = noteUsers(key);
+  return `
+    <div class="ed-field ed-photo"><span class="ed-lab">照片 <span class="ed-lab-hint">放在筆記最上方${n > 1 ? `，${n} 個地方共用` : ''}</span></span>
+      <div class="ph-prev" id="${id}Prev"></div>
+      <div class="ph-row"><input id="${id}" type="text" value="${esc(url)}" placeholder="貼上圖片網址" autocomplete="off" inputmode="url">
+        <label class="btn ghost ph-up"><i class="ti ti-upload"></i> 上傳<input type="file" accept="image/*" id="${id}File" hidden></label></div>
+      <div class="ph-st" id="${id}St"></div></div>`;
+}
+// 手機照片先縮到最長邊 1200px 的 JPG（大約 150–300KB），上傳比較快；同時留一份給畫面先顯示
+function shrinkPhoto(file) {
+  return new Promise((ok, fail) => {
+    const img = new Image(), u = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, 1200 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(u);
+      const dataUrl = c.toDataURL('image/jpeg', 0.82);
+      ok({ dataUrl, b64: dataUrl.split(',')[1] });
+    };
+    img.onerror = () => { URL.revokeObjectURL(u); fail(new Error('讀不到這張照片')); };
+    img.src = u;
+  });
+}
+// 上傳在背景進行：選好照片馬上看到預覽，可以繼續改別的、直接按儲存；傳完再自動補存網址
+const pendingPhoto = {};   // 筆記代號 → 還在上傳的照片（先拿來顯示）
+function wirePhoto(id, key) {
+  const $ = x => sheet.querySelector('#' + x);
+  const input = $(id); if (!input) return;
+  const box = $(id + 'Prev'), st = $(id + 'St');
+  const show = (src, badge) => {
+    box.innerHTML = src ? `<img src="${esc(src)}" alt="">${badge ? `<span class="ph-badge">${badge}</span>` : ''}` : '<span>還沒有照片</span>';
+    box.classList.toggle('empty', !src);
+    const img = box.querySelector('img');
+    if (img) img.onerror = () => { box.innerHTML = '<span>這個網址打不開，請換一個</span>'; box.classList.add('empty'); };
+  };
+  input.addEventListener('input', () => { sheet._photoJob = null; st.textContent = ''; show(input.value.trim()); });
+  $(id + 'File').addEventListener('change', async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    const auth = getAuth();
+    if (!auth) { st.textContent = '請先輸入通關密碼'; return; }
+    let shot;
+    try { shot = await shrinkPhoto(f); } catch (err) { st.textContent = err.message; return; }
+    show(shot.dataUrl, '上傳中…'); st.textContent = '可以繼續編輯或直接按儲存，照片傳完會自動存好';
+    input.value = ''; input.placeholder = '上傳中…'; input.disabled = true;
+    const job = { dataUrl: shot.dataUrl, done: false };
+    sheet._photoJob = job;
+    const here = () => sheet._photoJob === job && sheet.classList.contains('on');
+    job.promise = api({ ...auth, action: 'uploadPhoto', data: shot.b64, mime: 'image/jpeg', name: key || 'photo' })
+      .then(r => {
+        job.done = true; job.url = r.url;
+        if (here()) { input.value = r.url; input.disabled = false; input.placeholder = '貼上圖片網址'; show(shot.dataUrl, '已上傳'); st.textContent = ''; }
+        return r.url;
+      })
+      .catch(err => {
+        job.done = true; job.err = err;
+        const msg = err.code === 'network' ? '照片上傳失敗，請檢查網路再試一次' : '照片上傳失敗：' + err.message;
+        if (here()) { input.disabled = false; input.placeholder = '貼上圖片網址'; show(''); st.textContent = msg; }
+        else toast(msg);
+        return null;
+      });
+  });
+  show(input.value.trim());
+}
+// 儲存時：照片還在上傳就先記下來，傳完再補存；回傳這次有沒有動到照片
+function savePhoto(id, key) {
+  const input = sheet.querySelector('#' + id); if (!input) return false;
+  const job = sheet._photoJob;
+  if (job && !job.done) {
+    pendingPhoto[key] = job.dataUrl;
+    job.promise.then(url => {
+      delete pendingPhoto[key];
+      if (!url) return;
+      setNoteField(key, 'photo', url); saveData(); toast('照片已存好');
+      if (current) refreshView();
+    });
+    return true;
+  }
+  return setNoteField(key, 'photo', input.value.trim());
 }
 // 編輯視窗裡的「完整筆記」：直接展開，可以整篇修改
 function fullNoteField(id, key) {
@@ -520,7 +641,7 @@ async function sync() {
   try {
     if (noteKeys.length) {
       const notes = {};
-      noteKeys.forEach(k => { const n = NOTES[k] || {}; notes[k] = { orig: n.orig, points: n.points, links: n.links, full: n.full }; });
+      noteKeys.forEach(k => { const n = NOTES[k] || {}; notes[k] = { orig: n.orig, points: n.points, links: n.links, full: n.full, photo: n.photo || '' }; });
       await api({ ...auth, action: 'saveNotes', notes });
       noteKeys.forEach(k => delete noteQueue[k]);
     }
@@ -1034,6 +1155,7 @@ const sheet = document.getElementById('sheet'), sheetBg = document.getElementByI
 let lastFocus = null;
 function openSheet(html, focusSel, dialog) {
   sheet.innerHTML = '<div class="grab"></div>' + html;
+  sheet._photoJob = null;
   lastFocus = document.activeElement;
   sheet.scrollTop = 0;
   sheet.classList.toggle('dlg', !!dialog);
@@ -1059,7 +1181,10 @@ function closeSheet() {
 const linkify = t => esc(t).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
 function openNote(title, info, mine, q) {
   info = info || {};
+  const pkey = Object.keys(pendingPhoto).find(k => NOTES[k] === info || k === title);
+  if (pkey) info = { ...info, photo: pendingPhoto[pkey] };
   openSheet(`
+    ${info.photo ? `<img class="sh-photo" src="${esc(info.photo)}" alt="" onerror="this.remove()">` : ''}
     <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">${esc(title)}</div><div class="sh-sub">${esc(info.orig || '')}</div></div>
       ${q ? navBtn(q, title) : ''}<button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
     ${mine ? `<div class="mine"><b>筆記摘要</b>${esc(mine)}</div>` : ''}
@@ -1559,18 +1684,21 @@ function openEditor(id, startAt) {
     <div class="ed-field"><span class="ed-lab">類型</span><div class="chips" id="edCls">
       ${TYPES.map(([k, n]) => `<button type="button" class="chip ${k}${k === ed.cls ? ' on' : ''}" data-v="${k}">${n}</button>`).join('')}</div></div>`}
     <div class="ed-field"><span class="ed-lab">時間</span>
-      <div class="ed-row"><input id="edS" type="time" step="300" value="${T(ed.s)}" aria-label="開始時間"><span class="ed-to" id="edEnd"></span></div>
+      <div class="ed-time"><input id="edS" type="time" step="300" value="${T(ed.s)}" aria-label="開始時間">
+        <span class="ed-arrow">→</span><span class="ed-endbox" id="edEnd" aria-label="結束時間（自動算）"></span>${ed.group ? '' : `
+        <span class="ed-len">
+          <button type="button" class="step" data-d="-15" aria-label="少 15 分鐘"><i class="ti ti-minus"></i></button>
+          <span class="ed-dur" id="edDurTxt"></span>
+          <button type="button" class="step" data-d="15" aria-label="多 15 分鐘"><i class="ti ti-plus"></i></button></span>`}</div>
+      <div class="ed-mid" id="edMid" hidden>結束時間過了午夜，還算同一天</div>
       ${ed.group ? '<div class="ed-hint"><i class="ti ti-info-circle"></i> 區塊的長度由裡面的店家決定。改開始時間，所有店家會一起移動</div>' : `
-      <div class="chips" id="edDur" style="margin-top:10px">
-        ${durs.map(d => `<button type="button" class="chip" data-v="${d}">${durLabel(d)}</button>`).join('')}</div>
-      <div class="ed-row" style="margin-top:10px">
-        <button type="button" class="step" data-d="-15" aria-label="少 15 分鐘"><i class="ti ti-minus"></i></button>
-        <span class="ed-dur" id="edDurTxt"></span>
-        <button type="button" class="step" data-d="15" aria-label="多 15 分鐘"><i class="ti ti-plus"></i></button>
-      </div>`}
-      ${ed.isNew ? '' : '<label class="ed-check" id="edPushWrap" hidden><input type="checkbox" id="edPush"> 後面的行程一起順延 <span id="edPushTxt"></span></label>'}
+      <div class="chips sm" id="edDur">
+        ${durs.map(d => `<button type="button" class="chip" data-v="${d}">${durLabel(d)}</button>`).join('')}</div>`}
+      ${ed.isNew ? '' : '<label class="ed-switch" id="edPushWrap" hidden><input type="checkbox" class="sw" id="edPush"><span>後面的行程自動移動 <small id="edPushTxt"></small></span></label>'}
       <div class="err" id="edTimeErr" hidden></div>
     </div>
+    ${ed.group ? '' : `<label class="ed-switch"><input type="checkbox" class="sw" id="edBooked"${ed.booked ? ' checked' : ''}><span>已訂位</span></label>`}
+    <hr class="ed-sep">
     ${ed.pick ? '<div class="ed-hint"><i class="ti ti-info-circle"></i> 這是多選一的行程，名稱可以取像「早餐二選一」。要改裡面的店家，請展開後直接點那一家</div>' : ''}
     ${ed.group || ed.pick ? '' : `
     <label class="ed-field"><span class="ed-lab">地圖 <span class="ed-lab-hint">貼上 Google 地圖的分享連結最準確</span></span>
@@ -1579,7 +1707,8 @@ function openEditor(id, startAt) {
     <label class="ed-field"><span class="ed-lab">交通時間（從上一站過來）</span>
       <input id="edTravel" type="text" value="${esc(ed.travel)}" placeholder="例如：10 分" autocomplete="off"></label>
     ${ed.group ? '' : `
-    <label class="ed-check"><input type="checkbox" id="edBooked"${ed.booked ? ' checked' : ''}> 已訂位</label>
+    <hr class="ed-sep">
+    ${photoField('edPhoto', ed.noteKey)}
     <label class="ed-field"><span class="ed-lab">重點提醒</span>
       <input id="edAlert" type="text" value="${esc(ed.alert)}" placeholder="例如：只收現金、16:30 關門" autocomplete="off"></label>
     <label class="ed-field"><span class="ed-lab">筆記摘要</span>
@@ -1597,10 +1726,10 @@ function wireEditor() {
   const $ = id => sheet.querySelector('#' + id);
   const refresh = () => {
     const sMin = $('edS').value ? fromInput($('edS').value) : m(ed.s), eMin = sMin + ed.dur;
-    $('edEnd').textContent = `→ ${T(hhmm(eMin))}${eMin > 24 * 60 ? '（過午夜）' : ''}`;
-    if ($('edDurTxt')) $('edDurTxt').textContent = `停留 ${durLabel(ed.dur)}`;
+    $('edEnd').textContent = clock(eMin); $('edMid').hidden = eMin <= 24 * 60;
+    if ($('edDurTxt')) $('edDurTxt').textContent = durLabel(ed.dur);
     sheet.querySelectorAll('#edDur .chip').forEach(c => c.classList.toggle('on', +c.dataset.v === ed.dur));
-    // 時間有變時，才問要不要把後面的行程一起順延
+    // 時間有變時，才問要不要把後面的行程一起移動
     if ($('edPushWrap')) {
       const delta = eMin - m(ed.orig.e);
       $('edPushWrap').hidden = delta === 0 || !laterItems().length;
@@ -1636,15 +1765,16 @@ function wireEditor() {
   const updateMapStatus = () => {
     const box = $('edMapStatus'); if (!box) return;
     const v = $('edMap').value.trim(), name = $('edT').value.trim();
-    const find = name ? ` · <a href="${esc(mapHref(name + ' Chiang Mai'))}" target="_blank" rel="noopener">去 Google 地圖找「${esc(name)}」</a>` : '';
+    const find = name ? `<br><a href="${esc(mapHref(name + ' Chiang Mai'))}" target="_blank" rel="noopener">去 Google 地圖找「${esc(name)}」</a>` : '';
     if (!v) box.innerHTML = `<i class="ti ti-map-pin-off"></i> 還沒設定地點，卡片上不會出現導航按鈕${find}`;
     else if (/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|(www\.)?google\.[a-z.]+\/maps|share\.google)/i.test(v))
       box.innerHTML = '<span class="ok"><i class="ti ti-map-pin-check"></i> 已連結地點</span>，導航會直接打開這個地點';
     else if (/^https?:\/\//i.test(v)) box.innerHTML = '<i class="ti ti-link"></i> 已連結網址（不是 Google 地圖連結，可能無法導航）';
-    else box.innerHTML = `<i class="ti ti-search"></i> 用店名搜尋：${esc(v)}。可能會搜到別家，建議改貼分享連結${find}`;
+    else box.innerHTML = `<i class="ti ti-search"></i> 貼上 Google Map 的店名或是 Google Map 連結${find}`;
   };
   $('edMap')?.addEventListener('input', updateMapStatus);
   updateMapStatus();
+  wirePhoto('edPhoto', ed.noteKey || $('edT').value.trim());
   $('edSave').addEventListener('click', saveEditor);
   $('edDel')?.addEventListener('click', deleteItem);
   refresh();
@@ -1663,6 +1793,7 @@ function saveEditor() {
   // 完整筆記：新卡片用名稱當筆記代號；這張卡片原本沒有連到筆記的話，順便連上
   const fullEl = $('edFull'), noteKey = ed.noteKey || t;
   if (fullEl) setFullNote(noteKey, fullEl.value.trim());
+  const photoTouched = savePhoto('edPhoto', noteKey);
   if (ed.kind !== 'one' && !gt) { $('edGTErr').hidden = false; $('edGT').focus(); return; }
   const sMin = $('edS').value ? fromInput($('edS').value) : m(ed.s), eMin = sMin + ed.dur;
   const timeErr = msg => { $('edTimeErr').textContent = msg; $('edTimeErr').hidden = false; };
@@ -1675,7 +1806,7 @@ function saveEditor() {
   const fields = { t, s: hhmm(sMin), e: hhmm(eMin), travel: $('edTravel').value.trim() };
   if (!ed.group) Object.assign(fields, {
     cls: ed.cls, ...(ed.pick ? {} : { map: $('edMap').value.trim(), desc: $('edDesc').value.trim() }),
-    ...(fullEl && NOTES[noteKey] ? { note: noteKey } : {}), booked: $('edBooked').checked,
+    ...(fullEl && (NOTES[noteKey] || photoTouched) ? { note: noteKey } : {}), booked: $('edBooked').checked,
     alert: $('edAlert').value.trim(), mine: $('edMine').value.trim(),
   });
   if (ed.kind !== 'one') {
@@ -1720,12 +1851,12 @@ function fitGroup(card) {
 }
 const subList = (it, kind) => kind === 'stop' ? it.stops : (it.alts = it.alts || []);
 const mapStatusHtml = (v, name) => {
-  const find = name ? ` · <a href="${esc(mapHref(name + ' Chiang Mai'))}" target="_blank" rel="noopener">去 Google 地圖找「${esc(name)}」</a>` : '';
+  const find = name ? `<br><a href="${esc(mapHref(name + ' Chiang Mai'))}" target="_blank" rel="noopener">去 Google 地圖找「${esc(name)}」</a>` : '';
   if (!v) return `<i class="ti ti-map-pin-off"></i> 還沒設定地點，不會出現導航按鈕${find}`;
   if (/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|(www\.)?google\.[a-z.]+\/maps|share\.google)/i.test(v))
     return '<span class="ok"><i class="ti ti-map-pin-check"></i> 已連結地點</span>，導航會直接打開這個地點';
   if (/^https?:\/\//i.test(v)) return '<i class="ti ti-link"></i> 已連結網址（不是 Google 地圖連結，可能無法導航）';
-  return `<i class="ti ti-search"></i> 用店名搜尋：${esc(v)}。有分店的話建議改貼分享連結${find}`;
+  return `<i class="ti ti-search"></i> 貼上 Google Map 的店名或是 Google Map 連結${find}`;
 };
 let sed = null;   // 正在編輯的店家
 function openSubEditor(cardId, kind, idx) {
@@ -1745,12 +1876,13 @@ function openSubEditor(cardId, kind, idx) {
       <input id="sbSub" type="text" value="${esc(isStop ? sub.orig : sub.desc)}" placeholder="${isStop ? '例如：Joost Smoothies' : '例如：高 CP 值人氣平價按摩'}" autocomplete="off"></label>
     ${isStop ? `
     <div class="ed-field"><span class="ed-lab">時間</span>
-      <div class="ed-row"><input id="sbS" type="time" step="300" value="${T(sub.s)}" aria-label="抵達時間"><span class="ed-to" id="sbEnd"></span></div>
-      <div class="chips" id="sbDur" style="margin-top:10px">${[5, 10, 15, 30, 45, 60].map(d => `<button type="button" class="chip" data-v="${d}">${durLabel(d)}</button>`).join('')}</div>
-      <div class="ed-row" style="margin-top:10px">
-        <button type="button" class="step" data-d="-5" aria-label="少 5 分鐘"><i class="ti ti-minus"></i></button>
-        <span class="ed-dur" id="sbDurTxt"></span>
-        <button type="button" class="step" data-d="5" aria-label="多 5 分鐘"><i class="ti ti-plus"></i></button></div></div>
+      <div class="ed-time"><input id="sbS" type="time" step="300" value="${T(sub.s)}" aria-label="抵達時間">
+        <span class="ed-arrow">→</span><span class="ed-endbox" id="sbEnd" aria-label="離開時間（自動算）"></span>
+        <span class="ed-len">
+          <button type="button" class="step" data-d="-5" aria-label="少 5 分鐘"><i class="ti ti-minus"></i></button>
+          <span class="ed-dur" id="sbDurTxt"></span>
+          <button type="button" class="step" data-d="5" aria-label="多 5 分鐘"><i class="ti ti-plus"></i></button></span></div>
+      <div><div class="chips sm" id="sbDur">${[5, 10, 15, 30, 45, 60].map(d => `<button type="button" class="chip" data-v="${d}">${durLabel(d)}</button>`).join('')}</div></div></div>
     <label class="ed-field"><span class="ed-lab">區域</span>
       <input id="sbArea" type="text" value="${esc(sub.area)}" placeholder="例如：寧曼區、Nimman Soi 13" autocomplete="off"></label>` : `
     <label class="ed-field"><span class="ed-lab">補充資訊</span>
@@ -1758,6 +1890,7 @@ function openSubEditor(cardId, kind, idx) {
     <label class="ed-field"><span class="ed-lab">地圖 <span class="ed-lab-hint">貼上 Google 地圖的分享連結最準確</span></span>
       <input id="sbMap" type="text" value="${esc(sub.map)}" placeholder="貼上分享連結，或輸入店名" autocomplete="off" inputmode="url"></label>
     <div class="map-status" id="sbMapStatus"></div>
+    ${photoField('sbPhoto', isNew ? '' : subNoteKey(sub))}
     <label class="ed-field"><span class="ed-lab">筆記摘要</span>
       <textarea id="sbMine" rows="3" placeholder="想提醒大家的事">${esc(sub.mine || '')}</textarea></label>
     ${fullNoteField('sbFull', isNew ? '' : subNoteKey(sub))}
@@ -1771,13 +1904,14 @@ function openSubEditor(cardId, kind, idx) {
   const refresh = () => {
     $('sbMapStatus').innerHTML = mapStatusHtml($('sbMap').value.trim(), $('sbName').value.trim());
     if (!isStop) return;
-    $('sbEnd').textContent = '→ ' + T(hhmm(($('sbS').value ? fromInput($('sbS').value) : m(sub.s)) + sed.dur));
-    $('sbDurTxt').textContent = `停留 ${durLabel(sed.dur)}`;
+    $('sbEnd').textContent = clock(($('sbS').value ? fromInput($('sbS').value) : m(sub.s)) + sed.dur);
+    $('sbDurTxt').textContent = durLabel(sed.dur);
     sheet.querySelectorAll('#sbDur .chip').forEach(c => c.classList.toggle('on', +c.dataset.v === sed.dur));
   };
   ['sbName', 'sbMap', 'sbS'].forEach(id => $(id)?.addEventListener('input', () => { $('sbNameErr').hidden = true; refresh(); }));
   $('sbDur')?.addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) { sed.dur = +c.dataset.v; refresh(); } });
   sheet.querySelectorAll('.step').forEach(b => b.addEventListener('click', () => { sed.dur = Math.max(5, sed.dur + +b.dataset.d); refresh(); }));
+  wirePhoto('sbPhoto', isNew ? '' : subNoteKey(sub));
   $('sbSave').addEventListener('click', saveSub);
   $('sbDel')?.addEventListener('click', deleteSub);
   refresh();
@@ -1792,7 +1926,8 @@ function saveSub() {
   if (name !== old.name) delete sub.short;                      // 改了名字，收合時就顯示新名字
   if (!old.note && NOTES[subNoteKey(old)]) sub.note = subNoteKey(old);   // 改名後還找得到原本整理好的筆記
   const noteKey = sed.isNew ? name : subNoteKey(old);
-  if (setFullNote(noteKey, $('sbFull').value.trim()) && NOTES[noteKey]) sub.note = noteKey;
+  const fullChanged = setFullNote(noteKey, $('sbFull').value.trim()), photoChanged = savePhoto('sbPhoto', noteKey);
+  if ((fullChanged && NOTES[noteKey]) || photoChanged) sub.note = noteKey;
   if (isStop) {
     const sMin = $('sbS').value ? fromInput($('sbS').value) : m(old.s || card.s);
     if (sMin + sed.dur > DAY_END) { $('sbErr').textContent = '最晚只能排到凌晨 05:00'; $('sbErr').hidden = false; return; }
