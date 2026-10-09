@@ -447,6 +447,7 @@ const fromInput = v => { const n = m(v); return n < NIGHT ? n + 24 * 60 : n; }; 
 const durLabel = n => n < 60 ? `${n} 分` : n % 60 === 0 ? `${n / 60}h` : n % 30 === 0 ? `${Math.floor(n / 60)}.5h` : `${Math.floor(n / 60)}h${n % 60}m`;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => 'c' + Math.random().toString(36).slice(2, 9);
+const PENDING = '⏳ 查詢中…', PENDING_T = '查詢中的地點';   // 從 Google 地圖導入、還在背景查詢的卡片（見 resumeLookups）
 const MIN_NAV_H = 40;                // 區塊夠高才直接放導航鈕
 const COMPACT_H = 46;                // 低於這個高度，時間改放在標題同一行
 // 地圖欄位可以貼 Google 地圖網址，也可以只寫店名
@@ -786,7 +787,7 @@ async function load(force) {
     lastLoad = Date.now(); loadRetry = 0;
     if (!force && (syncing || pendingOps().count)) return;   // 等待期間又改了東西：這次先不要蓋掉
     if (editing && !force) { deferred = r; return; }         // 編輯中不要整頁換掉，按「完成」後再套用
-    applyServer(r); refreshView();
+    applyServer(r); refreshView(); resumeLookups();
   } catch (e) {
     if (!loaded) { loadErr = true; refreshView(); setTimeout(load, 10000); }   // 還沒有任何資料：10 秒後再試
     else if (loadRetry < 5) { loadRetry++; setTimeout(load, 15000); }       // 先顯示手機裡的舊資料，雲端讀取失敗（Google 偶爾回錯誤頁）：15 秒後再試，最多 5 次
@@ -1032,7 +1033,7 @@ function renderCand() {
     const tags = (it.booked ? ' · <i class="ti ti-circle-check"></i> 已訂位' : '') + (it.alert ? ` · <i class="ti ti-alert-triangle"></i> ${esc(it.alert)}` : '');
     return `<div class="blk ${it.cls || 'eat'}${it.map && !multi ? ' has-nav' : ''}" data-id="${it.id}">
       <div class="t">${multi ? `<i class="ti ${it.group ? 'ti-stack-2' : 'ti-arrows-split-2'}"></i> ` : ''}${esc(it.t)}${multi ? '' : noteBtn(it)}</div>
-      ${names ? `<div class="d">${esc(names)}</div>` : it.desc ? `<div class="d">${esc(it.desc)}</div>` : ''}
+      ${names ? `<div class="d">${esc(names)}</div>` : it.desc === PENDING ? '<div class="d"><i class="ti ti-loader-2 spin"></i> 查詢中，查好會自動填上</div>' : it.desc ? `<div class="d">${esc(it.desc)}</div>` : ''}
       <div class="s">預計 ${T(it.s)}–${T(it.e)} · ${durLabel(mins)}${tags}</div>
       ${it.map && !multi ? navBtn(it.map, it.t) : ''}${editIc}</div>`;
   }).join('') : '<div class="ov-empty">還沒有備選景點。可以從 Google 地圖導入，或編輯行程時「日期」選「備選」</div>');
@@ -2064,29 +2065,30 @@ function openImport() {
       <button type="button" class="btn primary" id="imAdd" disabled>加入備選</button>
     </div>`);   // 不自動跳出鍵盤，不然會把面板擋住
   const $ = id => sheet.querySelector('#' + id), list = $('imList');
+  // 「加入備選」可以直接按：已經查好的照預覽加入；還沒查、查詢中的先加入，背景繼續查
+  const typed = () => parseLinks($('imLinks').value);
   const refresh = () => {
-    const n = list.querySelectorAll('.im-row.ready .im-use:checked').length;
+    const n = list.querySelectorAll('.im-row.ready .im-use:checked, .im-row.loading').length + typed().length;
     $('imAdd').disabled = !n; $('imAdd').textContent = n ? `加入備選（${n}）` : '加入備選';
   };
+  $('imLinks').addEventListener('input', refresh);
   $('imGo').addEventListener('click', () => {
-    const text = $('imLinks').value, links = [];
-    for (const line of text.split(/\n+/)) {
-      const urls = line.match(/https?:\/\/\S+/g);
-      (urls || [line.trim()]).forEach(u => { if (u && !links.includes(u)) links.push(u); });
-    }
+    const links = typed();
     if (!links.length) { $('imLinks').focus(); return; }
     $('imLinks').value = '';
     links.slice(0, 10).forEach(link => {
       const row = div('im-row loading', `<div class="im-wait"><i class="ti ti-loader-2 spin"></i> 查詢中… <span>${esc(link)}</span></div>`);
+      row.dataset.link = link;
       list.appendChild(row);
       lookupOne(row, link);
     });
     if (links.length > 10) toast('一次最多 10 個，多的請再貼一次');
+    refresh();
   });
   async function lookupOne(row, link) {
     try {
       const r = await api({ ...getAuth(), action: 'lookupPlace', link }, 90000);   // 要等搜尋＋AI，給久一點
-      fillRow(row, r.place, r.note);
+      if (row.isConnected) fillRow(row, r.place, r.note);
     } catch (err) {
       row.className = 'im-row bad';
       row.innerHTML = `<div class="im-wait"><i class="ti ti-alert-circle"></i> ${esc(err.code === 'network' ? '連不上，請再試一次' : err.message)}<span>${esc(link)}</span></div>
@@ -2121,10 +2123,57 @@ function openImport() {
         travel: '', booked: false, alert: q('.im-alert'), mine: r.dataset.area ? `位置：${r.dataset.area}` : '', note: '' });
       added.push(t);
     }
-    if (!added.length) return;
+    const later = [...list.querySelectorAll('.im-row.loading')].map(r => r.dataset.link).concat(typed()).slice(0, 10);
+    for (const link of later) {
+      const url = /^https?:\/\//i.test(link);
+      DATA.cand.push({ id: uid(), t: url ? PENDING_T : link, desc: PENDING, cls: 'other', s: '12:00', e: '13:00', map: url ? link : '',
+        travel: '', booked: false, alert: '', mine: '', note: '' });
+    }
+    if (!added.length && !later.length) return;
     saveData('從 Google 地圖導入'); closeSheet(); renderPage(current); updateHeader(current);
-    toast(`已加入 ${added.length} 個備選`);
+    toast(later.length ? `已加入 ${added.length + later.length} 個備選，${later.length} 個在背景查詢中` : `已加入 ${added.length} 個備選`);
+    resumeLookups();
   });
+}
+const parseLinks = text => {
+  const links = [];
+  for (const line of text.split(/\n+/)) {
+    const urls = line.match(/https?:\/\/\S+/g);
+    (urls || [line.trim()]).forEach(u => { if (u && !links.includes(u)) links.push(u); });
+  }
+  return links;
+};
+// 背景查詢：描述欄位是 PENDING 的卡片就是還沒查完的（存在雲端，所以關掉網頁、換手機打開都會接著查）
+// 查好只補還沒填的欄位，查詢途中自己改過的不會被蓋掉
+const bgBusy = new Set(), bgQueue = [];
+let bgRunning = 0;
+function resumeLookups() {
+  if (!loaded || !getAuth()) return;
+  for (const k of ALL_KEYS) for (const it of DATA[k] || [])
+    if (it.desc === PENDING && !bgBusy.has(it.id)) { bgBusy.add(it.id); bgQueue.push({ id: it.id, link: it.map || it.t }); }
+  while (bgRunning < 3 && bgQueue.length) { bgRunning++; bgLookup(bgQueue.shift()).finally(() => { bgRunning--; resumeLookups(); }); }
+}
+async function bgLookup({ id, link }) {
+  let p = null, fail = '';
+  try { p = (await api({ ...getAuth(), action: 'lookupPlace', link }, 90000)).place; }
+  catch (err) { if (err.code === 'network') { setTimeout(() => bgBusy.delete(id), 60000); return; } fail = err.message; }   // 沒網路：一分鐘後再試
+  bgBusy.delete(id);
+  const [day, it] = findItem(id);
+  if (!it || it.desc !== PENDING) return;
+  if (p) {
+    if (it.t === PENDING_T || !it.t) it.t = p.name;
+    it.desc = p.desc || '';
+    if (it.cls === 'other' && p.cls) it.cls = p.cls;
+    if (!it.alert) it.alert = p.alert || '';
+    if (!it.mine && p.area) it.mine = `位置：${p.area}`;
+    if (m(it.e) - m(it.s) === 60 && p.dur) it.e = hhmm(Math.min(m(it.s) + p.dur, DAY_END));
+  } else {
+    it.desc = '';
+    if (it.t === PENDING_T) it.t = '讀不到店名的地點';   // 地圖連結還在，點導航一樣找得到
+  }
+  saveData('查詢地點');
+  if (day === current && !drag) renderPage(current);
+  toast(p ? `「${it.t}」查好了` : `「${it.t}」查不到資料：${fail}`);
 }
 // 跟同一天哪些行程時間重疊（提示用）
 function clashText(id, day) {
