@@ -172,6 +172,10 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .ph-frame img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;object-position:50% 50%;display:block}
 .sh-photo{margin:0 0 14px}
 .ph-prev{position:relative}
+.ph-drag{cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none}   /* 拖曳選顯示範圍：不捲動、不拉面板 */
+.ph-drag.moving{cursor:grabbing}
+.ph-hand{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(0,0,0,.35);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;pointer-events:none;transition:opacity .2s}
+.ph-drag.moving .ph-hand{opacity:0}
 .ph-badge{position:absolute;right:8px;bottom:8px;padding:2px 10px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;font-size:12px}
 
 .ph-prev.empty{display:flex;align-items:center;justify-content:center;height:64px;border:1px dashed var(--border);border-radius:10px;font-size:13px;color:var(--muted)}
@@ -616,9 +620,16 @@ function noteUsers(key) {
   }
   return n;
 }
+// 照片顯示範圍：存在網址最後面「#p=水平,垂直」（0–100，50,50＝正中央），不用另外開欄位；# 後面不會送到伺服器
+function splitPhoto(url) {
+  const m = /#p=(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)$/.exec(url || '');
+  return m ? { src: url.slice(0, m.index), x: +m[1], y: +m[2] } : { src: url || '', x: 50, y: 50 };
+}
+const joinPhoto = (src, x, y) => !src || (Math.round(x) === 50 && Math.round(y) === 50) ? src : `${src}#p=${Math.round(x)},${Math.round(y)}`;
+const photoImg = (url, attrs = '') => { const p = splitPhoto(url); return `<img src="${esc(p.src)}" alt="" style="object-position:${p.x}% ${p.y}%"${attrs}>`; };
 // 編輯視窗裡的「照片」：放在筆記最上方。可以貼圖片網址，也可以從手機上傳（存到雲端硬碟）
 function photoField(id, key) {
-  const url = NOTES[key]?.photo || '', n = noteUsers(key);
+  const url = splitPhoto(NOTES[key]?.photo).src, n = noteUsers(key);
   return `
     <div class="ed-field ed-photo"><span class="ed-lab">照片 <span class="ed-lab-hint">放在筆記最上方${n > 1 ? `，${n} 個地方共用` : ''}</span></span>
       <div class="ph-prev" id="${id}Prev"></div>
@@ -647,20 +658,41 @@ function wirePhoto(id, key) {
   const $ = x => sheet.querySelector('#' + x);
   const input = $(id); if (!input) return;
   const box = $(id + 'Prev'), st = $(id + 'St');
+  // 顯示範圍記在輸入框上（儲存時接到網址後面）；換了照片就回到正中央
+  const p0 = splitPhoto(NOTES[key]?.photo);
+  const setPos = (x, y) => { input.dataset.px = x; input.dataset.py = y; const img = box.querySelector('img'); if (img) img.style.objectPosition = `${x}% ${y}%`; };
+  input.dataset.px = p0.x; input.dataset.py = p0.y;
   const show = (src, badge) => {
-    box.innerHTML = src ? `<div class="ph-frame"><img src="${esc(src)}" alt=""></div>${badge ? `<span class="ph-badge">${badge}</span>` : ''}` : '<span>還沒有照片</span>';
+    box.innerHTML = src ? `<div class="ph-frame ph-drag"><img src="${esc(src)}" alt="" draggable="false" style="object-position:${input.dataset.px}% ${input.dataset.py}%">
+      <span class="ph-hand" aria-hidden="true"><i class="ti ti-hand-move"></i></span></div>${badge ? `<span class="ph-badge">${badge}</span>` : ''}` : '<span>還沒有照片</span>';
     box.classList.toggle('empty', !src);
     const img = box.querySelector('img');
     if (img) img.onerror = () => { if (!img.isConnected) return; box.innerHTML = '<span>這個網址打不開，請換一個</span>'; box.classList.add('empty'); };   // 已經換掉的舊圖晚一步報錯，不理它
   };
-  input.addEventListener('input', () => { sheet._photoJob = null; st.textContent = ''; show(input.value.trim()); });
+  // 在預覽上拖曳：照片超出框的那個方向可以移動，選要顯示哪一段
+  let drag0 = null;
+  box.addEventListener('pointerdown', e => {
+    const frame = e.target.closest('.ph-drag'), img = frame?.querySelector('img');
+    if (!img || !img.naturalWidth) return;
+    const fw = frame.clientWidth, fh = frame.clientHeight, k = Math.max(fw / img.naturalWidth, fh / img.naturalHeight);
+    drag0 = { x: e.clientX, y: e.clientY, px: +input.dataset.px, py: +input.dataset.py, ox: img.naturalWidth * k - fw, oy: img.naturalHeight * k - fh };
+    frame.setPointerCapture(e.pointerId); frame.classList.add('moving');
+  });
+  box.addEventListener('pointermove', e => {
+    if (!drag0) return;
+    const c = v => Math.max(0, Math.min(100, v));
+    setPos(drag0.ox > 1 ? c(drag0.px - (e.clientX - drag0.x) / drag0.ox * 100) : 50, drag0.oy > 1 ? c(drag0.py - (e.clientY - drag0.y) / drag0.oy * 100) : 50);
+  });
+  const dragEnd = () => { if (!drag0) return; drag0 = null; box.querySelector('.ph-drag')?.classList.remove('moving'); };
+  box.addEventListener('pointerup', dragEnd); box.addEventListener('pointercancel', dragEnd);
+  input.addEventListener('input', () => { sheet._photoJob = null; st.textContent = ''; setPos(50, 50); show(input.value.trim()); });
   $(id + 'File').addEventListener('change', async e => {
     const f = e.target.files[0]; e.target.value = ''; if (!f) return;
     const auth = getAuth();
     if (!auth) { st.textContent = '請先輸入通關密碼'; return; }
     let shot;
     try { shot = await shrinkPhoto(f); } catch (err) { st.textContent = err.message; return; }
-    show(shot.dataUrl, '上傳中…'); st.textContent = '可以繼續編輯或直接按儲存，照片傳完會自動存好';
+    setPos(50, 50); show(shot.dataUrl, '上傳中…'); st.textContent = '可以拖曳照片選要顯示的範圍；可以繼續編輯或直接按儲存，照片傳完會自動存好';
     input.value = ''; input.placeholder = '上傳中…'; input.disabled = true;
     const job = { dataUrl: shot.dataUrl, done: false };
     sheet._photoJob = job;
@@ -684,18 +716,18 @@ function wirePhoto(id, key) {
 // 儲存時：照片還在上傳就先記下來，傳完再補存；回傳這次有沒有動到照片
 function savePhoto(id, key) {
   const input = sheet.querySelector('#' + id); if (!input) return false;
-  const job = sheet._photoJob;
+  const job = sheet._photoJob, x = +input.dataset.px, y = +input.dataset.py;
   if (job && !job.done) {
-    pendingPhoto[key] = job.dataUrl;
+    pendingPhoto[key] = joinPhoto(job.dataUrl, x, y);
     job.promise.then(url => {
       delete pendingPhoto[key];
       if (!url) return;
-      setNoteField(key, 'photo', url); saveData(); toast('照片已存好');
+      setNoteField(key, 'photo', joinPhoto(url, x, y)); saveData(); toast('照片已存好');
       if (current) refreshView();
     });
     return true;
   }
-  return setNoteField(key, 'photo', input.value.trim());
+  return setNoteField(key, 'photo', joinPhoto(input.value.trim(), x, y));
 }
 // 編輯視窗裡的「完整筆記」：直接展開，可以整篇修改
 function fullNoteField(id, key) {
@@ -1363,7 +1395,7 @@ function openNote(title, info, mine, q) {
   const pkey = Object.keys(pendingPhoto).find(k => NOTES[k] === info || k === title);
   if (pkey) info = { ...info, photo: pendingPhoto[pkey] };
   openSheet(`
-    ${info.photo ? `<div class="ph-frame sh-photo"><img src="${esc(info.photo)}" alt="" onerror="this.parentNode.remove()"></div>` : ''}
+    ${info.photo ? `<div class="ph-frame sh-photo">${photoImg(info.photo, ' onerror="this.parentNode.remove()"')}</div>` : ''}
     <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">${esc(title)}</div><div class="sh-sub">${esc(info.orig || '')}</div></div>
       ${q ? navBtn(q, title) : ''}<button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
     ${mine ? `<div class="mine"><b>筆記摘要</b>${esc(mine)}</div>` : ''}
@@ -1397,7 +1429,7 @@ let pull = null;
 sheet.addEventListener('touchstart', e => {
   if (sheet.classList.contains('dlg') || e.touches.length > 1) return;
   const onHead = e.target.closest('.grab, .sh-head');
-  if (!onHead && (sheet.scrollTop > 0 || e.target.closest('input, textarea, select, .chips, .full-txt'))) return;
+  if (!onHead && (sheet.scrollTop > 0 || e.target.closest('input, textarea, select, .chips, .full-txt, .ph-drag'))) return;
   pull = { y0: e.touches[0].clientY, dy: 0, t0: Date.now(), active: false };
 }, { passive: true });
 sheet.addEventListener('touchmove', e => {
