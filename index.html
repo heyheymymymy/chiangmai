@@ -319,6 +319,32 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .cand-page .blk{position:relative;left:auto;right:auto;margin-bottom:8px;padding-bottom:8px}
 .cand-page .blk .d{-webkit-line-clamp:2}
 .btn.cand-import{width:100%;margin-bottom:12px;gap:6px}
+.cand-bar{display:flex;align-items:center;margin-bottom:12px}
+.cand-chips{flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;overscroll-behavior-x:contain}
+.cand-chips::-webkit-scrollbar{display:none}
+/* 跟天數列一樣：還能往左／往右滑時，該側邊緣淡出 */
+.cand-chips{--fl:0px;--fr:0px;
+  -webkit-mask-image:linear-gradient(to right,transparent 0,#000 var(--fl),#000 calc(100% - var(--fr)),transparent 100%);
+          mask-image:linear-gradient(to right,transparent 0,#000 var(--fl),#000 calc(100% - var(--fr)),transparent 100%)}
+.cand-chips.fade-l{--fl:24px}
+.cand-chips.fade-r{--fr:24px}
+.chips.sm.cand-filter{flex-wrap:nowrap;width:max-content;margin:0}
+.chips.sm.cand-filter .chip,.cand-sortbtn{box-sizing:border-box;height:26px;line-height:1;-webkit-appearance:none;appearance:none}   /* 標籤和切換鈕一樣高 */
+.chips.sm.cand-filter .chip{flex:none;padding:0 10px;font-size:12px}
+.cand-sep{flex:none;width:1px;height:20px;margin:0 8px;background:var(--border)}
+.cand-chips:empty + .cand-sep{display:none}   /* 標籤往左滑時被這條線擋住，不會蓋到切換鈕 */
+.cand-sortbtn{flex:none;width:34px;margin-left:auto;padding:0;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text);font-size:14px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.cand-sortbtn i{line-height:1}
+.cand-sortbtn.flip i{animation:sortSpin .3s ease}
+@keyframes sortSpin{from{transform:rotate(-90deg) scale(.6);opacity:0}to{transform:none;opacity:1}}
+.cand-list.anim{animation:dropIn .22s ease}
+.clr-wrap{position:relative;display:block;flex:1;min-width:0}
+.sheet .clr-wrap input{padding-right:40px}
+.clr-btn{position:absolute;top:50%;right:4px;width:32px;height:32px;margin-top:-16px;border:0;border-radius:50%;background:transparent;color:var(--muted);font-size:15px;display:grid;place-items:center;cursor:pointer}
+.clr-btn:active{background:var(--line)}
+.clr-wrap input:placeholder-shown + .clr-btn,.clr-wrap input:disabled + .clr-btn{display:none}
+.cand-grp{display:flex;align-items:center;gap:6px;margin:14px 0 6px;font-size:13px;font-weight:600;color:var(--c-fg);background:none}
+.cand-grp b{font-size:11px;font-weight:600;color:var(--muted)}
 .btn.im-go{width:100%;margin-top:8px;gap:6px}
 .im-list{display:flex;flex-direction:column;gap:10px;margin-top:16px}
 .im-list:empty{display:none}
@@ -596,7 +622,7 @@ function photoField(id, key) {
   return `
     <div class="ed-field ed-photo"><span class="ed-lab">照片 <span class="ed-lab-hint">放在筆記最上方${n > 1 ? `，${n} 個地方共用` : ''}</span></span>
       <div class="ph-prev" id="${id}Prev"></div>
-      <div class="ph-row"><input id="${id}" type="text" value="${esc(url)}" placeholder="貼上圖片網址" autocomplete="off" inputmode="url">
+      <div class="ph-row"><span class="clr-wrap"><input id="${id}" type="text" value="${esc(url)}" placeholder="貼上圖片網址" autocomplete="off" inputmode="url"><button type="button" class="clr-btn" aria-label="清除" tabindex="-1"><i class="ti ti-x"></i></button></span>
         <label class="btn ghost ph-up"><i class="ti ti-upload"></i> 上傳<input type="file" accept="image/*" id="${id}File" hidden></label></div>
       <div class="ph-st" id="${id}St"></div></div>`;
 }
@@ -625,7 +651,7 @@ function wirePhoto(id, key) {
     box.innerHTML = src ? `<div class="ph-frame"><img src="${esc(src)}" alt=""></div>${badge ? `<span class="ph-badge">${badge}</span>` : ''}` : '<span>還沒有照片</span>';
     box.classList.toggle('empty', !src);
     const img = box.querySelector('img');
-    if (img) img.onerror = () => { box.innerHTML = '<span>這個網址打不開，請換一個</span>'; box.classList.add('empty'); };
+    if (img) img.onerror = () => { if (!img.isConnected) return; box.innerHTML = '<span>這個網址打不開，請換一個</span>'; box.classList.add('empty'); };   // 已經換掉的舊圖晚一步報錯，不理它
   };
   input.addEventListener('input', () => { sheet._photoJob = null; st.textContent = ''; show(input.value.trim()); });
   $(id + 'File').addEventListener('change', async e => {
@@ -1024,10 +1050,16 @@ function renderPage(page) {
 // ---------- 備選景點 ----------
 // 跟每天一樣的彩色卡片，沒有時間軸、由上往下排。編輯時「日期」選某一天就排進去
 const candEl = document.getElementById('cand');
+// 篩選類型、排列方式（最新加入／分類）記在這支手機
+const CAND_VIEW_KEY = 'cm-cand-view';
+let candView = { f: '', sort: 'new' };
+try { Object.assign(candView, JSON.parse(localStorage.getItem(CAND_VIEW_KEY)) || {}); } catch {}
 function renderCand() {
   if (!loaded) { candEl.innerHTML = `<div class="ov-empty">${loadErr ? '載入失敗，請檢查網路後重新整理' : '載入行程中…'}</div>`; return; }
-  const list = DATA.cand || [];
-  candEl.innerHTML = `<button type="button" class="btn ghost cand-import" id="candImport"><i class="ti ti-map-pin-plus"></i> 從 Google 地圖導入</button>` + (list.length ? list.map(it => {
+  const all = DATA.cand || [];
+  if (candView.f && !all.some(c => (c.cls || 'eat') === candView.f)) candView.f = '';   // 那一類都排走了，回到全部
+  const shown = all.filter(c => !candView.f || (c.cls || 'eat') === candView.f).reverse();   // 後加入的在後面，反過來＝最新的在上面
+  const card = it => {
     const mins = m(it.e) - m(it.s), multi = it.group || it.alts?.length;
     const names = it.group ? it.stops.map(x => x.short || x.name).join(' → ') : it.alts?.length ? it.alts.map(a => a.name).join('／') : '';
     const tags = (it.booked ? ' · <i class="ti ti-circle-check"></i> 已訂位' : '') + (it.alert ? ` · <i class="ti ti-alert-triangle"></i> ${esc(it.alert)}` : '');
@@ -1036,11 +1068,48 @@ function renderCand() {
       ${names ? `<div class="d">${esc(names)}</div>` : it.desc === PENDING ? '<div class="d"><i class="ti ti-loader-2 spin"></i> 查詢中，查好會自動填上</div>' : it.desc ? `<div class="d">${esc(it.desc)}</div>` : ''}
       <div class="s">預計 ${T(it.s)}–${T(it.e)} · ${durLabel(mins)}${tags}</div>
       ${it.map && !multi ? navBtn(it.map, it.t) : ''}${editIc}</div>`;
-  }).join('') : '<div class="ov-empty">還沒有備選景點。可以從 Google 地圖導入，或編輯行程時「日期」選「備選」</div>');
+  };
+  let body;
+  if (!all.length) body = '<div class="ov-empty">還沒有備選景點。可以從 Google 地圖導入，或編輯行程時「日期」選「備選」</div>';
+  else if (candView.sort === 'type' && !candView.f)
+    body = TYPES.map(([k, n]) => { const g = shown.filter(c => (c.cls || 'eat') === k);
+      return g.length ? `<div class="cand-grp ${k}"><span class="cp-dot"></span>${n}<b>${g.length}</b></div>` + g.map(card).join('') : ''; }).join('');
+  else body = shown.map(card).join('');
+  candEl.innerHTML = `<button type="button" class="btn ghost cand-import" id="candImport"><i class="ti ti-map-pin-plus"></i> 從 Google 地圖導入</button>
+    ${all.length > 1 ? `<div class="cand-bar">
+      <div class="cand-chips">${typeChips(all, candView.f, 'cand-filter')}</div>
+      <span class="cand-sep" aria-hidden="true"></span>
+      ${sortBtn()}</div>` : ''}
+    <div class="cand-list${candAnim ? ' anim' : ''}">${body}</div>`;
+  candAnim = false;
+  candEl.querySelector('.cand-chips')?.addEventListener('scroll', chipFade, { passive: true });
+  chipFade();
 }
+let candAnim = false;   // 換篩選／排列後重畫時，清單淡入
+function chipFade() {
+  const c = candEl.querySelector('.cand-chips'); if (!c) return;
+  const max = c.scrollWidth - c.clientWidth;
+  c.classList.toggle('fade-l', c.scrollLeft > 2);
+  c.classList.toggle('fade-r', c.scrollLeft < max - 2);
+}
+addEventListener('resize', chipFade);
+// 排列切換鈕：一個圖示，點一下換另一種（時鐘＝最新加入、方塊＝依類型）
+const SORTS = { new: ['ti-clock', '最新加入'], type: ['ti-category', '依類型'] };
+const sortBtn = spin => `<button type="button" class="cand-sortbtn${spin ? ' flip' : ''}" data-sort aria-label="排列：${SORTS[candView.sort][1]}，點一下切換"><i class="ti ${SORTS[candView.sort][0]}"></i></button>`;
 // 編輯模式下點卡片＝編輯
 candEl.addEventListener('click', e => {
   if (e.target.closest('#candImport')) { if (getAuth()) openImport(); else openAuth(openImport); return; }
+  const f = e.target.closest('.cand-filter .chip'), so = e.target.closest('[data-sort]');
+  if (f || so) {
+    if (f) candView.f = f.dataset.v; else candView.sort = candView.sort === 'new' ? 'type' : 'new';
+    try { localStorage.setItem(CAND_VIEW_KEY, JSON.stringify(candView)); } catch {}
+    candAnim = true;
+    const sx = candEl.querySelector('.cand-chips')?.scrollLeft || 0;   // 標籤列滑到哪裡，重畫後留在原處
+    renderCand();
+    const chips = candEl.querySelector('.cand-chips'); if (chips) { chips.scrollLeft = sx; chipFade(); }
+    if (so) { candEl.querySelector('.cand-sortbtn').classList.add('flip'); toast(`排列：${SORTS[candView.sort][1]}`); }
+    return;
+  }
   const card = e.target.closest('[data-id]'); if (!card || e.target.closest('.nav, .note-btn')) return;
   e.preventDefault();
   // 編輯模式：點了編輯；一般模式：點了選要排到哪天（長按＝編輯）
@@ -1226,7 +1295,7 @@ const playIn = (el, cls) => { el.classList.remove('in-l', 'in-r'); void el.offse
 function edgeSwipe(el, dir, page) {
   let osw = null;
   el.addEventListener('touchstart', e => {
-    if (editing || e.touches.length > 1) return;
+    if (editing || e.touches.length > 1 || e.target.closest('.cand-chips')) return;   // 在可以左右滑的標籤列上：滑標籤，不是換頁
     const t = e.touches[0]; osw = { x: t.clientX, y: t.clientY, t: performance.now(), dx: 0, lock: null };
   }, { passive: true });
   el.addEventListener('touchmove', e => {
@@ -1318,6 +1387,9 @@ document.addEventListener('click', e => {
     return;
   }
   if (e.target.closest('.sh-close, .ed-cancel')) closeSheet();
+  // 輸入框最後面的 ✕：清空並通知原本的 input 事件（更新地圖狀態、照片預覽）
+  const clr = e.target.closest('.clr-btn');
+  if (clr) { e.preventDefault(); const inp = clr.previousElementSibling; inp.value = ''; inp.dispatchEvent(new Event('input', { bubbles: true })); inp.focus(); }
 }, true);
 sheetBg.addEventListener('click', closeSheet);
 // 往下拉關掉面板：拉上方的拉桿或標題列；內容已經捲到最上面時，在空白處往下拉也可以
@@ -1816,6 +1888,41 @@ headerEl.addEventListener('focusout', e => {
   saveData(); toast(key === 'en' ? '標題已更新' : '主題已更新');
 });
 
+// ---------- 從備選清單挑選（新增行程、新增一站／選項共用） ----------
+// 按鈕下面展開清單（不換面板），框內捲動；超過 5 個、而且有兩種以上類型，才出現類型標籤可以篩選
+const typeChips = (list, sel, cls) => {
+  const kinds = TYPES.filter(([k]) => list.some(c => (c.cls || 'eat') === k));
+  return kinds.length > 1 ? `<div class="chips sm ${cls}"><button type="button" class="chip${sel ? '' : ' on'}" data-v="">全部</button>${
+    kinds.map(([k, n]) => `<button type="button" class="chip ${k}${sel === k ? ' on' : ''}" data-v="${k}">${n}</button>`).join('')}</div>` : '';
+};
+const candDropHtml = cands => `
+  <button type="button" class="btn ghost cand-open" aria-expanded="false"><i class="ti ti-list-search"></i> 從備選清單挑選<span class="cnt">${cands.length}</span><i class="ti ti-chevron-down cand-chev"></i></button>
+  <div class="cand-drop" hidden>
+    ${cands.length > 5 ? typeChips(cands, '', 'cp-filter') : ''}
+    <div class="cand-pick">${cands.map(c => `<button type="button" class="cp-item ${c.cls || 'eat'}" data-id="${c.id}" data-cls="${c.cls || 'eat'}">
+      <span class="cp-dot"></span><span class="cp-main"><span class="cp-name">${esc(c.t)}</span>${c.desc && c.desc !== PENDING ? `<span class="cp-desc">${esc(c.desc)}</span>` : ''}</span>
+      <span class="cp-dur">${durLabel(m(c.e) - m(c.s))}</span></button>`).join('')}</div></div>`;
+function wireCandDrop(wrap, onPick) {
+  if (!wrap) return;
+  const btn = wrap.querySelector('.cand-open'), drop = wrap.querySelector('.cand-drop');
+  btn.addEventListener('click', () => {
+    const open = drop.hidden;
+    drop.hidden = !open; btn.setAttribute('aria-expanded', open); btn.classList.toggle('open', open);
+  });
+  drop.addEventListener('click', e => {
+    const chip = e.target.closest('.cp-filter .chip');
+    if (chip) {
+      drop.querySelectorAll('.cp-filter .chip').forEach(x => x.classList.toggle('on', x === chip));
+      drop.querySelectorAll('.cp-item').forEach(b => { b.hidden = !!chip.dataset.v && b.dataset.cls !== chip.dataset.v; });
+      drop.querySelector('.cand-pick').scrollTop = 0;
+      return;
+    }
+    const b = e.target.closest('.cp-item'); if (!b) return;
+    onPick(b.dataset.id);
+    sheet.classList.add('swap'); setTimeout(() => sheet.classList.remove('swap'), 250);   // 同一個面板淡入換成帶入的資料
+  });
+}
+
 let ed = null;   // 正在編輯的內容
 function openEditor(id, startAt, toDay) {
   const [, it] = id ? findItem(id) : [null, null];
@@ -1838,18 +1945,7 @@ function openEditor(id, startAt, toDay) {
       <button type="button" class="chip on" data-v="one">一個地點</button>
       <button type="button" class="chip" data-v="group">多個地點</button>
       <button type="button" class="chip" data-v="pick">多選一</button></div></div>
-    ${cands.length ? `<div id="edCandWrap">
-    <button type="button" class="btn ghost cand-open" id="edCand" aria-expanded="false" aria-controls="edCandList"><i class="ti ti-list-search"></i> 從備選清單挑選<span class="cnt">${cands.length}</span><i class="ti ti-chevron-down cand-chev"></i></button>
-    <div class="cand-drop" id="edCandList" hidden>
-      ${(() => {   // 超過 5 個、而且有兩種以上類型，才出現類型標籤可以篩選
-        const kinds = TYPES.filter(([k]) => cands.some(c => (c.cls || 'eat') === k));
-        return cands.length > 5 && kinds.length > 1 ? `<div class="chips sm cp-filter" id="cpF"><button type="button" class="chip on" data-v="">全部</button>${
-          kinds.map(([k, n]) => `<button type="button" class="chip ${k}" data-v="${k}">${n}</button>`).join('')}</div>` : '';
-      })()}
-      <div class="cand-pick">${cands.map(c => `<button type="button" class="cp-item ${c.cls || 'eat'}" data-id="${c.id}" data-cls="${c.cls || 'eat'}">
-        <span class="cp-dot"></span><span class="cp-main"><span class="cp-name">${esc(c.t)}</span>${c.desc ? `<span class="cp-desc">${esc(c.desc)}</span>` : ''}</span>
-        <span class="cp-dur">${durLabel(m(c.e) - m(c.s))}</span></button>`).join('')}</div>
-</div></div>` : ''}
+    ${cands.length ? `<div id="edCandWrap">${candDropHtml(cands)}</div>` : ''}
     <div id="edGTWrap" hidden>
       <label class="ed-field"><span class="ed-lab">卡片標題</span>
         <input id="edGT" type="text" value="" placeholder="" autocomplete="off"></label>
@@ -1885,7 +1981,7 @@ function openEditor(id, startAt, toDay) {
     ${ed.pick ? '<div class="ed-hint"><i class="ti ti-info-circle"></i> 這是多選一的行程，名稱可以取像「早餐二選一」。要改裡面的店家，請展開後直接點那一家</div>' : ''}
     ${ed.group || ed.pick ? '' : `
     <label class="ed-field"><span class="ed-lab">地圖 <span class="ed-lab-hint">貼上 Google 地圖的分享連結最準確</span></span>
-      <input id="edMap" type="text" value="${esc(ed.map)}" placeholder="貼上分享連結，或輸入店名" autocomplete="off" inputmode="url"></label>
+      <span class="clr-wrap"><input id="edMap" type="text" value="${esc(ed.map)}" placeholder="貼上分享連結，或輸入店名" autocomplete="off" inputmode="url"><button type="button" class="clr-btn" aria-label="清除" tabindex="-1"><i class="ti ti-x"></i></button></span></label>
     <div class="map-status" id="edMapStatus"></div>`}
     <label class="ed-field"><span class="ed-lab">交通時間（從上一站過來）</span>
       <input id="edTravel" type="text" value="${esc(ed.travel)}" placeholder="例如：10 分" autocomplete="off"></label>
@@ -1941,24 +2037,8 @@ function wireEditor() {
     if (multi) $('edGT').focus();
   });
   $('edGT')?.addEventListener('input', () => { $('edGTErr').hidden = true; });
-  // 從備選清單挑選：按鈕下面展開清單（不換面板），挑了就把那張備選帶進這個面板
-  $('edCand')?.addEventListener('click', () => {
-    const open = $('edCandList').hidden;
-    $('edCandList').hidden = !open;
-    $('edCand').setAttribute('aria-expanded', open);
-    $('edCand').classList.toggle('open', open);
-  });
-  $('edCandList')?.addEventListener('click', e => {
-    const b = e.target.closest('.cp-item'); if (!b) return;
-    openEditor(b.dataset.id, $('edS').value ? hhmm(fromInput($('edS').value)) : ed.s, current);
-    sheet.classList.add('swap'); setTimeout(() => sheet.classList.remove('swap'), 250);
-  });
-  $('cpF')?.addEventListener('click', e => {
-    const c = e.target.closest('.chip'); if (!c) return;
-    sheet.querySelectorAll('#cpF .chip').forEach(x => x.classList.toggle('on', x === c));
-    sheet.querySelectorAll('#edCandList .cp-item').forEach(b => { b.hidden = !!c.dataset.v && b.dataset.cls !== c.dataset.v; });
-    sheet.querySelector('#edCandList .cand-pick').scrollTop = 0;
-  });
+  // 從備選清單挑選：挑了就把那張備選帶進這個面板
+  wireCandDrop($('edCandWrap'), id => openEditor(id, $('edS').value ? hhmm(fromInput($('edS').value)) : ed.s, current));
   $('edDay').addEventListener('click', e => {
     const c = e.target.closest('.chip'); if (!c) return;
     ed.day = c.dataset.v;
@@ -2280,16 +2360,26 @@ const mapStatusHtml = (v, name) => {
   return `<i class="ti ti-search"></i> 貼上 Google Map 的店名或是 Google Map 連結${find}`;
 };
 let sed = null;   // 正在編輯的店家
-function openSubEditor(cardId, kind, idx) {
+// fromCand：從備選清單挑的那張備選 id，帶入它的資料；存好後從備選拿掉
+function openSubEditor(cardId, kind, idx, fromCand) {
   const [, card] = findItem(cardId), list = subList(card, kind), isNew = idx == null;
   const last = card.stops?.[card.stops.length - 1];
-  const sub = isNew ? (kind === 'stop' ? { s: last ? hhmm(m(last.s) + last.dur) : card.s, dur: 15, name: '' } : { name: '' }) : list[idx];
-  sed = { cardId, kind, idx, isNew, dur: sub.dur || 15 };
-  const isStop = kind === 'stop';
+  const at = last ? hhmm(m(last.s) + last.dur) : card.s;
+  const c = fromCand && (DATA.cand || []).find(x => x.id === fromCand);
+  const area = c && kind === 'stop' ? /^位置：(.+)$/m.exec(c.mine || '') : null;   // 導入時寫的「位置：寧曼」→ 一站的區域欄位
+  const sub = c
+    ? { name: c.t, desc: c.desc === PENDING ? '' : c.desc || '', info: c.alert || '', map: c.map || '', note: c.note || '', s: at, dur: m(c.e) - m(c.s),
+        area: area ? area[1].trim() : '',
+        mine: kind === 'stop' ? [(c.mine || '').replace(/^位置：.+$\n?/m, '').trim(), c.alert].filter(Boolean).join('\n') : c.mine || '' }   // 一站沒有提醒欄位，提醒併進筆記摘要
+    : isNew ? (kind === 'stop' ? { s: at, dur: 15, name: '' } : { name: '' }) : list[idx];
+  sed = { cardId, kind, idx, isNew, dur: sub.dur || 15, fromCand: c ? c.id : null, prefill: c ? sub : null };
+  const isStop = kind === 'stop', nk = isNew && !c ? '' : subNoteKey(sub);
+  const cands = isNew && !c ? DATA.cand || [] : [];
   openSheet(`
-    <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">${isNew ? (isStop ? '新增一站' : '新增選項') : (isStop ? '編輯店家' : '編輯選項')}</div>
+    <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">${c ? '從備選加入' : isNew ? (isStop ? '新增一站' : '新增選項') : (isStop ? '編輯店家' : '編輯選項')}</div>
       <div class="sh-sub">${esc(card.t)}</div></div>
       <button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
+    ${cands.length ? `<div id="sbCandWrap" class="sb-cand">${candDropHtml(cands)}</div>` : ''}
     <label class="ed-field"><span class="ed-lab">名稱</span>
       <input id="sbName" type="text" value="${esc(sub.name)}" placeholder="${isStop ? '例如：山竹冰沙' : '例如：The Artist Spa'}" autocomplete="off"></label>
     <div class="err" id="sbNameErr" hidden>請輸入名稱</div>
@@ -2309,18 +2399,19 @@ function openSubEditor(cardId, kind, idx) {
     <label class="ed-field"><span class="ed-lab">補充資訊</span>
       <input id="sbInfo" type="text" value="${esc(sub.info)}" placeholder="例如：每日 10:00–23:00" autocomplete="off"></label>`}
     <label class="ed-field"><span class="ed-lab">地圖 <span class="ed-lab-hint">貼上 Google 地圖的分享連結最準確</span></span>
-      <input id="sbMap" type="text" value="${esc(sub.map)}" placeholder="貼上分享連結，或輸入店名" autocomplete="off" inputmode="url"></label>
+      <span class="clr-wrap"><input id="sbMap" type="text" value="${esc(sub.map)}" placeholder="貼上分享連結，或輸入店名" autocomplete="off" inputmode="url"><button type="button" class="clr-btn" aria-label="清除" tabindex="-1"><i class="ti ti-x"></i></button></span></label>
     <div class="map-status" id="sbMapStatus"></div>
-    ${photoField('sbPhoto', isNew ? '' : subNoteKey(sub))}
+    ${photoField('sbPhoto', nk)}
     <label class="ed-field"><span class="ed-lab">筆記摘要</span>
       <textarea id="sbMine" rows="3" placeholder="想提醒大家的事">${esc(sub.mine || '')}</textarea></label>
-    ${fullNoteField('sbFull', isNew ? '' : subNoteKey(sub))}
+    ${fullNoteField('sbFull', nk)}
     <div class="err" id="sbErr" hidden></div>
     <div class="ed-actions">
       ${isNew ? '' : '<button type="button" class="btn ghost danger" id="sbDel"><i class="ti ti-trash"></i> 刪除</button>'}
       <button type="button" class="btn ghost ed-cancel">取消</button>
-      <button type="button" class="btn primary" id="sbSave">${isNew ? '新增' : '儲存'}</button>
-    </div>`, isNew ? '#sbName' : '.sh-close');
+      <button type="button" class="btn primary" id="sbSave">${c ? '加入' : isNew ? '新增' : '儲存'}</button>
+    </div>`, isNew && !cands.length && !c ? '#sbName' : '.sh-close');
+  wireCandDrop(sheet.querySelector('#sbCandWrap'), id => openSubEditor(cardId, kind, null, id));
   const $ = id => sheet.querySelector('#' + id);
   const refresh = () => {
     $('sbMapStatus').innerHTML = mapStatusHtml($('sbMap').value.trim(), $('sbName').value.trim());
@@ -2332,7 +2423,7 @@ function openSubEditor(cardId, kind, idx) {
   ['sbName', 'sbMap', 'sbS'].forEach(id => $(id)?.addEventListener('input', () => { $('sbNameErr').hidden = true; refresh(); }));
   $('sbDur')?.addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) { sed.dur = +c.dataset.v; refresh(); } });
   sheet.querySelectorAll('.step').forEach(b => b.addEventListener('click', () => { sed.dur = Math.max(5, sed.dur + +b.dataset.d); refresh(); }));
-  wirePhoto('sbPhoto', isNew ? '' : subNoteKey(sub));
+  wirePhoto('sbPhoto', nk);
   $('sbSave').addEventListener('click', saveSub);
   $('sbDel')?.addEventListener('click', deleteSub);
   refresh();
@@ -2342,20 +2433,29 @@ function saveSub() {
   const [, card] = findItem(sed.cardId), list = subList(card, sed.kind), isStop = sed.kind === 'stop';
   const name = $('sbName').value.trim();
   if (!name) { $('sbNameErr').hidden = false; $('sbName').focus(); return; }
-  const old = sed.isNew ? {} : list[sed.idx];
+  const old = sed.isNew ? sed.prefill || {} : list[sed.idx];
   const sub = { ...old, name, map: $('sbMap').value.trim(), mine: $('sbMine').value.trim() };
   if (name !== old.name) delete sub.short;                      // 改了名字，收合時就顯示新名字
   if (!old.note && NOTES[subNoteKey(old)]) sub.note = subNoteKey(old);   // 改名後還找得到原本整理好的筆記
-  const noteKey = sed.isNew ? name : subNoteKey(old);
+  const noteKey = sed.isNew && !sed.prefill ? name : subNoteKey(old);
   const fullChanged = setFullNote(noteKey, $('sbFull').value.trim()), photoChanged = savePhoto('sbPhoto', noteKey);
   if ((fullChanged && NOTES[noteKey]) || photoChanged) sub.note = noteKey;
   if (isStop) {
     const sMin = $('sbS').value ? fromInput($('sbS').value) : m(old.s || card.s);
     if (sMin + sed.dur > DAY_END) { $('sbErr').textContent = '最晚只能排到凌晨 05:00'; $('sbErr').hidden = false; return; }
     Object.assign(sub, { s: hhmm(sMin), dur: sed.dur, orig: $('sbSub').value.trim(), area: $('sbArea').value.trim() });
-  } else Object.assign(sub, { desc: $('sbSub').value.trim(), info: $('sbInfo').value.trim() });
+    if (sed.prefill) { delete sub.desc; delete sub.info; }   // 從備選帶進來的描述／提醒，一站用不到
+  } else {
+    Object.assign(sub, { desc: $('sbSub').value.trim(), info: $('sbInfo').value.trim() });
+    if (sed.prefill) { delete sub.s; delete sub.dur; }
+  }
   if (sed.isNew) list.push(sub); else list[sed.idx] = sub;
   let note = sed.isNew ? (isStop ? '已新增一站' : '已新增選項') : '已儲存';
+  if (sed.fromCand) {   // 從備選挑的：搬進來之後，備選裡那張拿掉
+    const i = DATA.cand.findIndex(x => x.id === sed.fromCand);
+    if (i >= 0) DATA.cand.splice(i, 1);
+    note = `已從備選加入「${name}」`;
+  }
   if (isStop) {
     list.sort((a, b) => m(a.s) - m(b.s));
     if (fitGroup(card)) note += `，區塊時間調整為 ${T(card.s)}–${T(card.e)}`;
