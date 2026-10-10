@@ -956,7 +956,7 @@ function renderCards(items) {
           </div>`).join('')}<button type="button" class="add-sub" data-kind="alt"><i class="ti ti-plus"></i> 新增選項</button>`
         : `${it.stops.map((st, i) => `
           <div class="stop" data-kind="stop" data-idx="${i}"><div class="num">${i + 1}</div>
-            <div style="flex:1;min-width:0"><div class="n">${esc(st.name)}${subNoteBtn(it.id, 'stop', i, st)}</div>${st.orig ? `<div class="o">${esc(st.orig)}</div>` : ''}
+            <div style="flex:1;min-width:0"><div class="n">${esc(st.name)}${subNoteBtn(it.id, 'stop', i, st)}</div>${st.orig ? `<div class="o">${esc(st.orig)}</div>` : ''}${st.desc ? `<div class="o">${esc(st.desc)}</div>` : ''}
               <div class="m"><i class="ti ti-clock"></i> ${T(st.s)} · ${durLabel(st.dur)}${st.area ? `　<i class="ti ti-map-pin"></i> ${esc(st.area)}` : ''}</div></div>
             ${st.map ? navBtn(st.map, st.name) : ''}${subEditIc}
           </div>`).join('')}<button type="button" class="add-sub" data-kind="stop"><i class="ti ti-plus"></i> 新增一站</button>`;
@@ -1714,7 +1714,7 @@ function mergeInto(id, cardId, idx, before) {
   if (!src || !card) return false;
   if (src.booked && !confirm(`「${src.t}」是已訂位的行程，確定要放進「${card.t}」嗎？`)) return false;
   const snapshot = before || JSON.parse(JSON.stringify(list));
-  const base = { name: src.t, map: src.map, mine: src.mine, note: src.note || (NOTES[src.t] ? src.t : '') };
+  const base = { name: src.t, desc: src.desc || '', map: src.map, mine: src.mine, note: src.note || (NOTES[src.t] ? src.t : '') };
   if (card.group) {
     // 插在第 idx 站：接在前一站後面開始，後面的站如果被擠到就往後順延
     const stops = card.stops, dur = m(src.e) - m(src.s);
@@ -1744,7 +1744,7 @@ function pullOut(sub, at, intoId, intoIdx) {
   const subs = sub.kind === 'stop' ? card.stops : card.alts, x = subs[sub.idx];
   const dur = sub.kind === 'stop' ? x.dur : m(card.e) - m(card.s);
   const start = at ?? (sub.kind === 'stop' ? m(x.s) : m(card.s));
-  const it = { id: uid(), t: x.name, desc: sub.kind === 'alt' ? x.desc || '' : '', cls: card.cls, s: hhmm(start), e: hhmm(Math.min(start + dur, DAY_END)),
+  const it = { id: uid(), t: x.name, desc: x.desc || '', cls: card.cls, s: hhmm(start), e: hhmm(Math.min(start + dur, DAY_END)),
     map: x.map || '', mine: x.mine || '', note: x.note || '', alert: sub.kind === 'alt' ? x.info || '' : '', travel: '' };
   subs.splice(sub.idx, 1);
   let gone = '';
@@ -2103,7 +2103,7 @@ function saveEditor() {
     if (!ed.isNew && push && delta) laterItems().forEach(x => { x.s = hhmm(m(x.s) + delta); x.e = hhmm(m(x.e) + delta); });
     const first = { name: t, desc: fields.desc, map: fields.map, mine: fields.mine, note: it.note || (NOTES[t] ? t : '') };
     Object.assign(it, fields, { t: gt, desc: '', map: '', mine: '', note: '' });
-    if (ed.kind === 'group') { it.group = true; it.stops = [{ ...first, desc: undefined, s: fields.s, dur: ed.dur }]; delete it.alts; }   // 合併區塊的每一站沒有描述欄位
+    if (ed.kind === 'group') { it.group = true; it.stops = [{ ...first, s: fields.s, dur: ed.dur }]; delete it.alts; }
     else { it.alts = [{ ...first, info: fields.alert }]; it.alert = ''; }   // 「只收現金」這類提醒是那一家店的，跟著選項走
     if (ed.isNew) DATA[ed.day].push(it); else moveDay(it.id, ed.fromDay, ed.day);
     saveData(); closeSheet(); renderPage(current);
@@ -2386,6 +2386,8 @@ function openSubEditor(cardId, kind, idx, fromCand) {
     <label class="ed-field"><span class="ed-lab">${isStop ? '原文店名' : '一句話說明'}</span>
       <input id="sbSub" type="text" value="${esc(isStop ? sub.orig : sub.desc)}" placeholder="${isStop ? '例如：Joost Smoothies' : '例如：高 CP 值人氣平價按摩'}" autocomplete="off"></label>
     ${isStop ? `
+    <label class="ed-field"><span class="ed-lab">描述</span>
+      <input id="sbDesc" type="text" value="${esc(sub.desc || '')}" placeholder="例如：米其林必比登推薦的泰北金麵" autocomplete="off" maxlength="80"></label>
     <div class="ed-field"><span class="ed-lab">時間</span>
       <div class="ed-time"><input id="sbS" type="time" step="300" value="${T(sub.s)}" aria-label="抵達時間">
         <span class="ed-arrow">→</span><span class="ed-endbox" id="sbEnd" aria-label="離開時間（自動算）"></span>
@@ -2443,8 +2445,8 @@ function saveSub() {
   if (isStop) {
     const sMin = $('sbS').value ? fromInput($('sbS').value) : m(old.s || card.s);
     if (sMin + sed.dur > DAY_END) { $('sbErr').textContent = '最晚只能排到凌晨 05:00'; $('sbErr').hidden = false; return; }
-    Object.assign(sub, { s: hhmm(sMin), dur: sed.dur, orig: $('sbSub').value.trim(), area: $('sbArea').value.trim() });
-    if (sed.prefill) { delete sub.desc; delete sub.info; }   // 從備選帶進來的描述／提醒，一站用不到
+    Object.assign(sub, { s: hhmm(sMin), dur: sed.dur, orig: $('sbSub').value.trim(), area: $('sbArea').value.trim(), desc: $('sbDesc').value.trim() });
+    delete sub.info;   // 從備選帶進來的提醒已經併進筆記摘要，一站沒有這個欄位
   } else {
     Object.assign(sub, { desc: $('sbSub').value.trim(), info: $('sbInfo').value.trim() });
     if (sed.prefill) { delete sub.s; delete sub.dur; }
