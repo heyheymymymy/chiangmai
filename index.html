@@ -362,6 +362,7 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .im-top .im-name{font-weight:600}
 .im-row2{display:flex;gap:6px}
 .im-note{font-size:12px;color:var(--muted)}
+.im-facts{font-size:12px;color:var(--text2);padding:0 2px}
 .im-note:empty{display:none}
 .im-wait{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:2px;padding-right:28px}
 .im-wait span{font-size:11px;word-break:break-all;opacity:.8}
@@ -575,7 +576,7 @@ function applyServer(r) {
 }
 
 // 比較內容時：空字串、false、空清單都當成「沒有」
-const ITEM_KEYS = ['s', 'e', 'cls', 't', 'desc', 'map', 'travel', 'booked', 'alert', 'mine', 'note', 'group', 'stops', 'alts'];
+const ITEM_KEYS = ['s', 'e', 'cls', 't', 'desc', 'hours', 'map', 'travel', 'booked', 'alert', 'mine', 'note', 'group', 'stops', 'alts'];
 const SUB_KEYS = ['s', 'dur', 'name', 'short', 'orig', 'area', 'desc', 'info', 'map', 'mine', 'note'];
 const isEmpty = v => v === '' || v == null || v === false;
 const canonSub = x => { const o = {}; SUB_KEYS.forEach(k => { if (!isEmpty(x[k])) o[k] = k === 'dur' ? +x[k] : x[k]; }); return o; };
@@ -2240,8 +2241,17 @@ function openImport() {
   });
   async function lookupOne(row, link) {
     try {
-      const r = await api({ ...getAuth(), action: 'lookupPlace', link }, 90000);   // 要等搜尋＋AI，給久一點
-      if (row.isConnected) fillRow(row, r.place, r.note);
+      const r = await api({ ...getAuth(), action: 'lookupPlace', link }, 90000);   // 沒有 Places 時要等搜尋＋AI，給久一點
+      if (!row.isConnected) return;
+      fillRow(row, r.place, r.note);
+      // Google 地圖的資料先出來，中文描述等 AI 寫好再補進去（自己先打了就不蓋掉）
+      if (r.place.places) describe(r.place).then(d => {
+        if (!d || !row.isConnected) return;
+        row._d = d;
+        const di = row.querySelector('.im-desc'); if (di && !di.value.trim()) di.value = d.desc || '';
+        const nm = row.querySelector('.im-name'); if (nm && nm.value.trim() === r.place.name && betterName(r.place.name, d.name)) nm.value = d.name;
+        const n = row.querySelector('.im-note'); if (n && !n.querySelector('.ti-alert-triangle')) n.innerHTML = '<i class="ti ti-sparkles"></i> 描述是 AI 照 Google 地圖的資料寫的，加入前看一下';
+      });
     } catch (err) {
       row.className = 'im-row bad';
       row.innerHTML = `<div class="im-wait"><i class="ti ti-alert-circle"></i> ${esc(err.code === 'network' ? '連不上，請再試一次' : err.message)}<span>${esc(link)}</span></div>
@@ -2253,15 +2263,17 @@ function openImport() {
     const dur = p.dur || 60, durs = [...new Set([30, 60, 90, 120, 180, dur])].sort((a, b) => a - b);
     const dup = ALL_KEYS.find(k => (DATA[k] || []).some(x => x.t.toLowerCase() === p.name.toLowerCase()));
     row.className = 'im-row ready';
-    row.dataset.map = p.map || ''; row.dataset.area = p.area || '';
+    row.dataset.map = p.map || ''; row.dataset.area = p.area || ''; row._p = p;
+    const facts = p.places ? [p.rating ? `⭐ ${p.rating}（${p.count.toLocaleString()}）` : '', p.price, p.hoursShort].filter(Boolean).join(' · ') : '';
     row.innerHTML = `
       <label class="im-top"><input type="checkbox" class="im-use"${dup ? '' : ' checked'}><input type="text" class="im-name" value="${esc(p.name)}" aria-label="名稱"></label>
-      <input type="text" class="im-desc" value="${esc(p.desc || '')}" placeholder="描述（顯示在卡片上）" aria-label="描述">
+      ${facts ? `<div class="im-facts">${esc(facts)}</div>` : ''}
+      <input type="text" class="im-desc" value="${esc(p.desc || '')}" placeholder="${p.places ? 'AI 正在寫描述…' : '描述（顯示在卡片上）'}" aria-label="描述">
       <div class="im-row2">
         <select class="im-cls" aria-label="類型">${TYPES.map(([k, n]) => `<option value="${k}"${k === (p.cls || 'other') ? ' selected' : ''}>${n}</option>`).join('')}</select>
         <select class="im-dur" aria-label="停留時間">${durs.map(d => `<option value="${d}"${d === dur ? ' selected' : ''}>${durLabel(d)}</option>`).join('')}</select>
       </div>
-      <input type="text" class="im-alert" value="${esc(p.alert || '')}" placeholder="重點提醒，例如 17:00 開門" aria-label="重點提醒">
+      <input type="text" class="im-alert" value="${esc(p.hoursShort || p.alert || '')}" placeholder="重點提醒，例如 17:00 開門" aria-label="重點提醒">
       <div class="im-note">${dup ? `<i class="ti ti-alert-triangle"></i> ${dup === 'cand' ? '備選' : `第 ${dayNum(dup)} 天`}已經有這個地點了` : note ? `<i class="ti ti-info-circle"></i> ${esc(note)}` : p.ai ? '<i class="ti ti-sparkles"></i> AI 查的資料，加入前請看一下對不對' : ''}</div>`;
   }
   list.addEventListener('change', refresh);
@@ -2270,10 +2282,15 @@ function openImport() {
     const rows = [...list.querySelectorAll('.im-row.ready')].filter(r => r.querySelector('.im-use').checked);
     const added = [];
     for (const r of rows) {
-      const q = c => r.querySelector(c).value.trim(), dur = +q('.im-dur');
+      const q = c => r.querySelector(c).value.trim(), dur = +q('.im-dur'), p = r._p || {}, d = r._d;
       const t = q('.im-name'); if (!t) continue;
-      DATA.cand.push({ id: uid(), t, desc: q('.im-desc'), cls: q('.im-cls'), s: '12:00', e: hhmm(12 * 60 + dur), map: r.dataset.map || t,
-        travel: '', booked: false, alert: q('.im-alert'), mine: r.dataset.area ? `位置：${r.dataset.area}` : '', note: '' });
+      const start = p.start ? m(p.start) : 12 * 60, area = (d && d.area) || r.dataset.area;
+      const it = { id: uid(), t, desc: q('.im-desc'), cls: q('.im-cls'), s: hhmm(start), e: hhmm(Math.min(start + dur, DAY_END)), map: r.dataset.map || t,
+        travel: '', booked: false, alert: q('.im-alert'), mine: [area ? `位置：${area}` : '', d && d.alert ? `提醒：${d.alert}` : ''].filter(Boolean).join('\n'), note: '', hours: p.hours || '' };
+      // 有 Google 地圖的資料但 AI 描述還沒好：先加入，描述留給背景查詢補
+      if (p.places && !it.desc && !d) it.desc = PENDING;
+      DATA.cand.push(it);
+      if (p.places) { placeNote(it, p); placePhotoFor(it, p); }
       added.push(t);
     }
     const later = [...list.querySelectorAll('.im-row.loading')].map(r => r.dataset.link).concat(typed()).slice(0, 10);
@@ -2303,30 +2320,88 @@ let bgRunning = 0;
 function resumeLookups() {
   if (!loaded || !getAuth()) return;
   for (const k of ALL_KEYS) for (const it of DATA[k] || [])
-    if (it.desc === PENDING && !bgBusy.has(it.id)) { bgBusy.add(it.id); bgQueue.push({ id: it.id, link: it.map || it.t }); }
+    if (it.desc === PENDING && !bgBusy.has(it.id)) { bgBusy.add(it.id); bgQueue.push({ id: it.id, link: it.t && it.t !== PENDING_T ? it.t : it.map }); }   // 已經知道店名就用店名查
   while (bgRunning < 3 && bgQueue.length) { bgRunning++; bgLookup(bgQueue.shift()).finally(() => { bgRunning--; resumeLookups(); }); }
 }
 async function bgLookup({ id, link }) {
   let p = null, fail = '';
   try { p = (await api({ ...getAuth(), action: 'lookupPlace', link }, 90000)).place; }
   catch (err) { if (err.code === 'network') { setTimeout(() => bgBusy.delete(id), 60000); return; } fail = err.message; }   // 沒網路：一分鐘後再試
-  bgBusy.delete(id);
-  const [day, it] = findItem(id);
-  if (!it || it.desc !== PENDING) return;
-  if (p) {
+  let [day, it] = findItem(id);
+  if (!it || it.desc !== PENDING) { bgBusy.delete(id); return; }
+  if (p && p.places) {
+    // Google 地圖的資料先寫進去（卡片馬上有名稱、類型、時間），描述等 AI
+    const fresh = it.t === PENDING_T && it.s === '12:00' && m(it.e) - m(it.s) === 60;   // 還是剛加入時的預設值
     if (it.t === PENDING_T || !it.t) it.t = p.name;
-    it.desc = p.desc || '';
     if (it.cls === 'other' && p.cls) it.cls = p.cls;
-    if (!it.alert) it.alert = p.alert || '';
-    if (!it.mine && p.area) it.mine = `位置：${p.area}`;
-    if (m(it.e) - m(it.s) === 60 && p.dur) it.e = hhmm(Math.min(m(it.s) + p.dur, DAY_END));
+    if (fresh && p.start) { it.s = p.start; it.e = hhmm(Math.min(m(p.start) + (p.dur || 60), DAY_END)); }
+    if (!it.alert) it.alert = p.hoursShort || '';
+    if (!it.hours && p.hours) it.hours = p.hours;
+    if (!it.map && p.gmap) it.map = p.gmap;
+    placeNote(it, p); placePhotoFor(it, p);
+    saveData('查詢地點');
+    if (day === current && !drag) renderPage(current);
+    const d = await describe(p);
+    [day, it] = findItem(id);
+    bgBusy.delete(id);
+    if (!it || it.desc !== PENDING) return;
+    it.desc = d ? d.desc || '' : '';
+    if (d) {
+      if (it.t === p.name && betterName(p.name, d.name)) it.t = d.name;
+      const extra = [d.area && !/位置：/.test(it.mine || '') ? `位置：${d.area}` : '', d.alert ? `提醒：${d.alert}` : ''].filter(Boolean);
+      if (extra.length) it.mine = [it.mine, ...extra].filter(Boolean).join('\n');
+    }
   } else {
-    it.desc = '';
-    if (it.t === PENDING_T) it.t = '讀不到店名的地點';   // 地圖連結還在，點導航一樣找得到
+    bgBusy.delete(id);
+    if (p) {
+      if (it.t === PENDING_T || !it.t) it.t = p.name;
+      it.desc = p.desc || '';
+      if (it.cls === 'other' && p.cls) it.cls = p.cls;
+      if (!it.alert) it.alert = p.alert || '';
+      if (!it.mine && p.area) it.mine = `位置：${p.area}`;
+      if (m(it.e) - m(it.s) === 60 && p.dur) it.e = hhmm(Math.min(m(it.s) + p.dur, DAY_END));
+    } else {
+      it.desc = '';
+      if (it.t === PENDING_T) it.t = '讀不到店名的地點';   // 地圖連結還在，點導航一樣找得到
+    }
   }
   saveData('查詢地點');
   if (day === current && !drag) renderPage(current);
   toast(p ? `「${it.t}」查好了` : `「${it.t}」查不到資料：${fail}`);
+}
+// 請 AI 照 Google 地圖的資料寫中文描述、提醒、區域；失敗回傳 null（只是少了描述）
+async function describe(p) {
+  try {
+    const r = await api({ ...getAuth(), action: 'describePlace', facts: { name: p.name, type: (TYPE_NAME[p.cls] || '') + (p.type ? `（${p.type}）` : ''),
+      addr: p.addr, summary: p.summary, rating: p.rating, count: p.count, price: p.price, hours: (p.hoursText || '').replace(/\n/g, '；') } }, 90000);
+    return r.place;
+  } catch { return null; }
+}
+// AI 回的名字是「原本的英文名＋中文名」才換（例如 Wat Phra That Doi Suthep　雙龍寺）
+const betterName = (orig, ai) => !!ai && ai !== orig && ai.toLowerCase().startsWith(orig.toLowerCase());
+// Google 地圖的資料整理成筆記：重點（評分、價位、營業時間、地址）、完整營業時間、連結。這家店本來就有筆記就不動
+function placeNote(it, p) {
+  const key = it.note || it.t;
+  it.note = key;
+  const cur = NOTES[key];
+  if (cur && (cur.points || cur.full)) return;
+  setNoteField(key, 'orig', p.short || p.addr || '');
+  setNoteField(key, 'points', [p.rating ? `⭐ Google 評分 ${p.rating}（${p.count.toLocaleString()} 則評論）` : '', p.price ? `💰 價位 ${p.price}` : '',
+    p.hoursShort ? `🕒 ${p.hoursShort}` : '', p.addr ? `📍 ${p.addr}` : ''].filter(Boolean));
+  setNoteField(key, 'links', [p.gmap ? ['Google 地圖', p.gmap] : null, p.web ? ['官方網站', p.web] : null,
+    p.photoBy ? [`照片：${p.photoBy}（Google 地圖）`, p.photoByUri || p.gmap] : null].filter(Boolean));
+  setNoteField(key, 'full', [p.hoursText ? '營業時間\n' + p.hoursText : '', p.summary ? 'Google 簡介\n' + p.summary : ''].filter(Boolean).join('\n\n'));
+}
+// 店家照片：從 Google 地圖存一張到雲端硬碟，當作筆記照片（筆記已經有照片就不換）
+const photoBusy = new Set();
+async function placePhotoFor(it, p) {
+  const key = it.note || it.t;
+  if (!p.photo || NOTES[key]?.photo || photoBusy.has(key)) return;
+  photoBusy.add(key);
+  try {
+    const r = await api({ ...getAuth(), action: 'placePhoto', photo: p.photo, name: key }, 60000);
+    if (!NOTES[key]?.photo) { setNoteField(key, 'photo', r.url); saveData('店家照片'); }
+  } catch {} finally { photoBusy.delete(key); }
 }
 // 跟同一天哪些行程時間重疊（提示用）
 function clashText(id, day) {
