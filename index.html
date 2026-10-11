@@ -2379,15 +2379,15 @@ async function describe(p) {
 }
 // AI 回的名字是「原本的英文名＋中文名」才換（例如 Wat Phra That Doi Suthep　雙龍寺）
 const betterName = (orig, ai) => !!ai && ai !== orig && ai.toLowerCase().startsWith(orig.toLowerCase());
-// Google 地圖的資料整理成筆記：重點（評分、價位、營業時間、地址）、完整營業時間、連結。這家店本來就有筆記就不動
+// Google 地圖的資料整理成筆記：標題下面是地址，重點（評分、價位、營業時間）、完整營業時間、連結。這家店本來就有筆記就不動
 function placeNote(it, p) {
   const key = it.note || it.t;
   it.note = key;
   const cur = NOTES[key];
   if (cur && (cur.points || cur.full)) return;
   setNoteField(key, 'orig', p.short || p.addr || '');
-  setNoteField(key, 'points', [p.rating ? `⭐ Google 評分 ${p.rating}（${p.count.toLocaleString()} 則評論）` : '', p.price ? `💰 價位 ${p.price}` : '',
-    p.hoursShort ? `🕒 ${p.hoursShort}` : '', p.addr ? `📍 ${p.addr}` : ''].filter(Boolean));
+  setNoteField(key, 'points', [p.rating ? `⭐ Google 評分 ${p.rating}（${p.count.toLocaleString()} 則評論）` : '', p.price ? `💰 ${p.price}` : '',
+    p.hoursShort ? `🕒 ${p.hoursShort}` : ''].filter(Boolean));   // 地址已經在筆記標題下面，不重複
   setNoteField(key, 'links', [p.gmap ? ['Google 地圖', p.gmap] : null, p.web ? ['官方網站', p.web] : null,
     p.photoBy ? [`照片：${p.photoBy}（Google 地圖）`, p.photoByUri || p.gmap] : null].filter(Boolean));
   setNoteField(key, 'full', [p.hoursText ? '營業時間\n' + p.hoursText : '', p.summary ? 'Google 簡介\n' + p.summary : ''].filter(Boolean).join('\n\n'));
