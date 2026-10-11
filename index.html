@@ -44,7 +44,7 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
           mask-image:linear-gradient(to right,transparent 0,#000 var(--fl),#000 calc(100% - var(--fr)),transparent 100%)}
 .tabs.fade-l{--fl:36px}
 .tabs.fade-r{--fr:36px}
-.tab{flex:none;padding:5px 8px;border-radius:8px;font-size:13px;color:var(--text2);border:0;background:none}
+.tab{position:relative;flex:none;padding:5px 8px;border-radius:8px;font-size:13px;color:var(--text2);border:0;background:none}
 /* 天數按鈕：正圓、數字置中 */
 .tab.day{width:30px;height:30px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center;
   line-height:1;font-variant-numeric:tabular-nums}
@@ -54,7 +54,7 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .day-sub{font-size:13px;color:var(--text2);margin-top:4px;text-align:center}
 .tl{position:relative;margin:14px 16px 40px 0;transition:height .25s ease;touch-action:pan-y pinch-zoom}
 /* 卡片層：時間線固定不動，只有這一層左右滑 */
-.cards{position:absolute;top:0;bottom:0;left:52px;right:0;overflow:hidden}
+.cards{position:absolute;top:0;bottom:0;left:52px;right:0;overflow:hidden;z-index:1}   /* 蓋在「現在」那條線上面 */
 .layer{position:absolute;inset:0}
 .layer.drag{will-change:transform}
 .layer.anim{transition:transform .32s cubic-bezier(.2,.8,.2,1)}
@@ -98,7 +98,7 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .blk .s{font-size:12px;margin-top:1px}
 /* 一句話描述：放在標題和時間中間，卡片放得下幾行就顯示幾行 */
 .blk .d{font-size:12px;line-height:16px;margin:1px 0 2px;opacity:.85;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
-.car{position:absolute;left:12px;z-index:4;height:16px;line-height:16px;font-size:11px;color:var(--text2);white-space:nowrap}
+.car{position:absolute;left:12px;z-index:4;height:16px;line-height:16px;font-size:11px;color:var(--text2);white-space:nowrap;padding:0 4px;margin-left:-4px;background:var(--bg,#fff)}   /* 白底：「現在」的線經過時在這裡斷開 */
 .eat{background:var(--eat-bg);border-color:var(--eat-bd);color:var(--eat-fg);--c-bg:var(--eat-bg);--c-bd:var(--eat-bd);--c-fg:var(--eat-fg)}
 .spa{background:var(--spa-bg);border-color:var(--spa-bd);color:var(--spa-fg);--c-bg:var(--spa-bg);--c-bd:var(--spa-bd);--c-fg:var(--spa-fg)}
 .cafe{background:var(--cafe-bg);border-color:var(--cafe-bd);color:var(--cafe-fg);--c-bg:var(--cafe-bg);--c-bd:var(--cafe-bd);--c-fg:var(--cafe-fg)}
@@ -143,8 +143,11 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 /* 展開後：線條和編號跟著卡片的類型顏色；白色清單一路延伸到卡片底部，不留一大塊色塊 */
 .grp.open{display:flex;flex-direction:column;padding-bottom:0}
 .grp.open .list{flex:1 0 auto}
-.now{position:absolute;left:46px;right:0;border-top:2px solid var(--now);z-index:3}
-.now::before{content:"";position:absolute;left:-5px;top:-6px;width:10px;height:10px;border-radius:50%;background:var(--now)}
+.now{position:absolute;left:52px;width:0;height:0;z-index:0}   /* 現在時間：時間刻度和卡片中間一個咖啡色小圓點 */
+.now::before{content:"";position:absolute;left:-7px;top:-3px;width:6px;height:6px;border-radius:50%;background:var(--accent-fg)}
+.now{pointer-events:none}
+.tab.today::after{content:"";position:absolute;left:50%;bottom:2px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--accent-fg)}
+.ov-today{margin-left:6px;padding:0 6px;border-radius:999px;background:var(--accent-fg);color:#fff;font-size:10px;font-weight:600;vertical-align:1px}
 .note-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;flex:none;
   border:0;border-radius:50%;background:rgba(255,255,255,.75);color:inherit;font-size:13px;cursor:pointer;padding:0}
 .note-btn::after{content:"";position:absolute;inset:-9px}
@@ -858,12 +861,45 @@ function refreshView() {
 }
 // 從別的 App 切回來、超過 1 分鐘沒更新：抓一次最新的
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && !editing && Date.now() - lastLoad > 60000) load();
+  if (document.visibilityState !== 'visible') return;
+  if (!editing && Date.now() - lastLoad > 60000) load();
+  // 隔天再打開（換日了）：自動跳到新的今天；同一天就停在原本看的那頁
+  const today = tripNow()?.day || null;
+  if (today && today !== shownToday && !editing && !sheet.classList.contains('on')) { shownToday = today; location.hash = today; }
+  else if (isDay(current)) markNow();
 });
 
 // 標題和主題：使用者改過的存在 DATA.days，沒改過就用預設值
 const dayInfo = page => ({ ...DAYS[dayNum(page) - 1], ...(DATA.days?.[page] || {}) });
 const itemsOf = page => (DATA[page] || []).slice().sort((a, b) => m(a.s) - m(b.s));
+
+// ---------- 今天模式 ----------
+// 旅行期間：打開網站直接到當天、時間軸上用小圓點標出現在的時間
+// 測試用：網址加 ?now=2026-11-09T14:30 假裝現在是那個時間
+const TRIP_YEAR = 2026;
+const NOW_SHIFT = (() => { const p = new URLSearchParams(location.search).get('now'); const t = p && new Date(p); return t && !isNaN(t) ? t - Date.now() : 0; })();
+// 現在是第幾天、幾分（凌晨 05:00 前還算前一天，分鐘數 +24h，跟行程的記法一樣）；不在旅程中回傳 null
+function tripNow() {
+  const d = new Date(Date.now() + NOW_SHIFT);
+  let mins = d.getHours() * 60 + d.getMinutes();
+  if (mins < NIGHT) { d.setDate(d.getDate() - 1); mins += 24 * 60; }
+  if (d.getFullYear() !== TRIP_YEAR) return null;
+  const md = `${d.getMonth() + 1}/${d.getDate()}`, day = DAY_KEYS.find(k => dayInfo(k).date === md);
+  return day ? { day, mins } : null;
+}
+// 時間軸上標出「現在」：時間刻度旁邊一個咖啡色小圓點；每分鐘更新一次
+function markNow() {
+  tl.querySelectorAll('.now').forEach(el => { const i = movable.indexOf(el); if (i >= 0) movable.splice(i, 1); el.remove(); });
+  const now = tripNow();
+  if (!now || now.day !== current || !curLayer) return null;
+  if (now.mins < START * 60 || now.mins > END * 60) return null;
+  const prev = target; target = tl;
+  const line = place(div('now'), (now.mins - START * 60) * PX);
+  target = prev;
+  relayout();
+  return line;
+}
+setInterval(() => { if (document.visibilityState === 'visible' && !drag && !busy && isDay(current)) markNow(); }, 60000);
 
 // 時間軸範圍：預設 9:00–22:00，有行程超出時自動延伸（所有天數共用，滑動時才對得齊）
 let START = 9, END = 22, baseH = 0;
@@ -1029,8 +1065,10 @@ let current = null, cardsEl = null, curLayer = null, busy = false;
 const SLIDE_GAP = 28;   // 滑動時前後兩天卡片之間的距離
 
 function updateHeader(page) {
+  const today = tripNow()?.day;
   document.querySelectorAll('.tab').forEach(t => {
     const on = t.dataset.page === page;
+    t.classList.toggle('today', t.dataset.page === today);
     t.classList.toggle('on', on);
     if (on) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
   });
@@ -1076,7 +1114,7 @@ function renderPage(page) {
     }
     relayout();
   }
-  // 「現在時間」紅線先拿掉，之後考慮做成開關（樣式 .now 保留著）
+  markNow();
 }
 
 // ---------- 備選景點 ----------
@@ -1160,6 +1198,7 @@ function shortName(t) {
   return m ? m[1] : t;
 }
 function renderOverview() {
+  const today = tripNow()?.day;
   const days = DAY_KEYS.map(k => ({ k, info: dayInfo(k), items: [...(DATA[k] || [])].sort((a, b) => m(a.s) - m(b.s)) }));
   let html = '';
   if (!loaded) { ovEl.innerHTML = `<div class="ov-empty">${loadErr ? '載入失敗，請檢查網路後重新整理' : '載入行程中…'}</div>`; return; }
@@ -1180,7 +1219,7 @@ function renderOverview() {
   html += '<div class="ov-sec">每天</div>' + days.map(d => {
     const places = d.items.filter(listed).map(it => `
       <span class="ov-place"><span class="ov-dot ${it.cls || 'eat'}"></span><span class="nm">${esc(it.t)}</span>${it.booked ? '<i class="ti ti-circle-check ov-ok"></i>' : ''}</span>`).join('');
-    return `<button type="button" class="ov-row" data-go="${d.k}"><span class="ov-when"><b>${d.info.date} ${d.info.wd}</b>${esc(d.info.zh || '')}</span>
+    return `<button type="button" class="ov-row${d.k === today ? ' today' : ''}" data-go="${d.k}"><span class="ov-when"><b>${d.info.date} ${d.info.wd}${d.k === today ? '<span class="ov-today">今天</span>' : ''}</b>${esc(d.info.zh || '')}</span>
       <span class="ov-places">${places || '<span class="ov-empty">還沒有行程</span>'}</span><i class="ti ti-chevron-right"></i></button>`;
   }).join('');
   html += '<div class="ov-sec">這趟旅程</div><div class="ov-stats">' + TYPES.filter(([k]) => count[k]).map(([k, n]) =>
@@ -1234,7 +1273,9 @@ function showPage(page, animate = true) {
   } else {
     renderPage(page);
   }
-  scrollTo({ top: 0 });
+  // 打開今天：捲到「現在」的小圓點（放在畫面上方 1/3），其他天回到最上面
+  const line = tl.querySelector('.now');
+  scrollTo({ top: line ? Math.max(0, line.getBoundingClientRect().top + scrollY - innerHeight / 3) : 0 });
 }
 
 document.querySelector('.tabs').addEventListener('click', e => {
@@ -2522,7 +2563,10 @@ function toast(msg, actionText, action, ms) {
   if (ms !== 0) toastTimer = setTimeout(() => toastEl.classList.remove('on'), ms || (actionText ? 5000 : 2000));
 }
 
-showPage(location.hash.slice(1) || 'd3', false);
+// 旅行期間打開網站一律到今天（加到主畫面的捷徑會記住當時那一頁，所以不看網址）；其他時候照網址，沒有就到總覽
+let shownToday = tripNow()?.day || null;
+if (shownToday) history.replaceState(null, '', '#' + shownToday);
+showPage(shownToday || location.hash.slice(1) || 'overview', false);
 if (resumeDraft && getAuth()) {
   editStart = resumeDraft;
   setEditing(true);
