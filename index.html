@@ -2250,6 +2250,7 @@ function openImport() {
         row._d = d;
         const di = row.querySelector('.im-desc'); if (di && !di.value.trim()) di.value = d.desc || '';
         const nm = row.querySelector('.im-name'); if (nm && nm.value.trim() === r.place.name && betterName(r.place.name, d.name)) nm.value = d.name;
+        if (d.must) row.querySelector('.im-desc').insertAdjacentHTML('beforebegin', `<div class="im-facts">👍 必點：${esc(d.must)}</div>`);
         const n = row.querySelector('.im-note'); if (n && !n.querySelector('.ti-alert-triangle')) n.innerHTML = '<i class="ti ti-sparkles"></i> 描述是 AI 照 Google 地圖的資料寫的，加入前看一下';
       });
     } catch (err) {
@@ -2264,7 +2265,7 @@ function openImport() {
     const dup = ALL_KEYS.find(k => (DATA[k] || []).some(x => x.t.toLowerCase() === p.name.toLowerCase()));
     row.className = 'im-row ready';
     row.dataset.map = p.map || ''; row.dataset.area = p.area || ''; row._p = p;
-    const facts = p.places ? [p.rating ? `⭐ ${p.rating}（${p.count.toLocaleString()}）` : '', p.price, p.hoursShort].filter(Boolean).join(' · ') : '';
+    const facts = p.places ? [p.rating ? `⭐ ${p.rating}（${p.count.toLocaleString()}）` : '', p.price, p.hoursShort, p.pay].filter(Boolean).join(' · ') : '';
     row.innerHTML = `
       <label class="im-top"><input type="checkbox" class="im-use"${dup ? '' : ' checked'}><input type="text" class="im-name" value="${esc(p.name)}" aria-label="名稱"></label>
       ${facts ? `<div class="im-facts">${esc(facts)}</div>` : ''}
@@ -2273,7 +2274,7 @@ function openImport() {
         <select class="im-cls" aria-label="類型">${TYPES.map(([k, n]) => `<option value="${k}"${k === (p.cls || 'other') ? ' selected' : ''}>${n}</option>`).join('')}</select>
         <select class="im-dur" aria-label="停留時間">${durs.map(d => `<option value="${d}"${d === dur ? ' selected' : ''}>${durLabel(d)}</option>`).join('')}</select>
       </div>
-      <input type="text" class="im-alert" value="${esc(p.hoursShort || p.alert || '')}" placeholder="重點提醒，例如 17:00 開門" aria-label="重點提醒">
+      <input type="text" class="im-alert" value="${esc((p.places && placeAlert(p)) || p.alert || '')}" placeholder="重點提醒，例如 17:00 開門" aria-label="重點提醒">
       <div class="im-note">${dup ? `<i class="ti ti-alert-triangle"></i> ${dup === 'cand' ? '備選' : `第 ${dayNum(dup)} 天`}已經有這個地點了` : note ? `<i class="ti ti-info-circle"></i> ${esc(note)}` : p.ai ? '<i class="ti ti-sparkles"></i> AI 查的資料，加入前請看一下對不對' : ''}</div>`;
   }
   list.addEventListener('change', refresh);
@@ -2290,7 +2291,7 @@ function openImport() {
       // 有 Google 地圖的資料但 AI 描述還沒好：先加入，描述留給背景查詢補
       if (p.places && !it.desc && !d) it.desc = PENDING;
       DATA.cand.push(it);
-      if (p.places) { placeNote(it, p); placePhotoFor(it, p); }
+      if (p.places) { placeNote(it, p); reviewNote(it, d); placePhotoFor(it, p); }
       added.push(t);
     }
     const later = [...list.querySelectorAll('.im-row.loading')].map(r => r.dataset.link).concat(typed()).slice(0, 10);
@@ -2335,7 +2336,7 @@ async function bgLookup({ id, link }) {
     if (it.t === PENDING_T || !it.t) it.t = p.name;
     if (it.cls === 'other' && p.cls) it.cls = p.cls;
     if (fresh && p.start) { it.s = p.start; it.e = hhmm(Math.min(m(p.start) + (p.dur || 60), DAY_END)); }
-    if (!it.alert) it.alert = p.hoursShort || '';
+    if (!it.alert) it.alert = placeAlert(p);
     if (!it.hours && p.hours) it.hours = p.hours;
     if (!it.map && p.gmap) it.map = p.gmap;
     placeNote(it, p); placePhotoFor(it, p);
@@ -2350,6 +2351,7 @@ async function bgLookup({ id, link }) {
       if (it.t === p.name && betterName(p.name, d.name)) it.t = d.name;
       const extra = [d.area && !/位置：/.test(it.mine || '') ? `位置：${d.area}` : '', d.alert ? `提醒：${d.alert}` : ''].filter(Boolean);
       if (extra.length) it.mine = [it.mine, ...extra].filter(Boolean).join('\n');
+      reviewNote(it, d);
     }
   } else {
     bgBusy.delete(id);
@@ -2373,7 +2375,7 @@ async function bgLookup({ id, link }) {
 async function describe(p) {
   try {
     const r = await api({ ...getAuth(), action: 'describePlace', facts: { name: p.name, type: (TYPE_NAME[p.cls] || '') + (p.type ? `（${p.type}）` : ''),
-      addr: p.addr, summary: p.summary, rating: p.rating, count: p.count, price: p.price, hours: (p.hoursText || '').replace(/\n/g, '；') } }, 90000);
+      addr: p.addr, summary: p.summary, rating: p.rating, count: p.count, price: p.price, hours: (p.hoursText || '').replace(/\n/g, '；'), pay: p.pay, reviews: p.reviews } }, 90000);
     return r.place;
   } catch { return null; }
 }
@@ -2387,11 +2389,22 @@ function placeNote(it, p) {
   if (cur && (cur.points || cur.full)) return;
   setNoteField(key, 'orig', p.short || p.addr || '');
   setNoteField(key, 'points', [p.rating ? `⭐ Google 評分 ${p.rating}（${p.count.toLocaleString()} 則評論）` : '', p.price ? `💰 ${p.price}` : '',
-    p.hoursShort ? `🕒 ${p.hoursShort}` : ''].filter(Boolean));   // 地址已經在筆記標題下面，不重複
+    p.pay ? `💳 ${p.pay}` : '', p.hoursShort ? `🕒 ${p.hoursShort}` : '', placeTags(p)].filter(Boolean));   // 地址已經在筆記標題下面，不重複
   setNoteField(key, 'links', [p.gmap ? ['Google 地圖', p.gmap] : null, p.web ? ['官方網站', p.web] : null,
     p.photoBy ? [`照片：${p.photoBy}（Google 地圖）`, p.photoByUri || p.gmap] : null].filter(Boolean));
   setNoteField(key, 'full', [p.hoursText ? '營業時間\n' + p.hoursText : '', p.summary ? 'Google 簡介\n' + p.summary : ''].filter(Boolean).join('\n\n'));
 }
+// 店家標記（有素食、戶外座位…）；「可訂位」和供應哪幾餐使用者覺得沒用，不顯示
+const placeTags = p => { const t = (p.tags || []).filter(x => x !== '可訂位'); return t.length ? `✅ ${t.join('・')}` : ''; };
+// AI 從評論整理的必點、注意事項，加在筆記重點最後（已經加過就不重複）
+function reviewNote(it, d) {
+  const key = it.note || it.t, pts = NOTES[key]?.points || [];
+  if (!d || !(d.must || d.tips) || pts.some(x => /^(👍|💬) /.test(x))) return;
+  it.note = key;
+  setNoteField(key, 'points', [...pts, d.must ? `👍 必點：${d.must}` : '', d.tips ? `💬 評論提到：${d.tips}` : ''].filter(Boolean));
+}
+// 卡片上的重點提醒：營業時間，只收現金也一起寫
+const placeAlert = p => [p.hoursShort, p.pay === '只收現金' ? '只收現金' : ''].filter(Boolean).join('・');
 // 店家照片：從 Google 地圖存一張到雲端硬碟，當作筆記照片（筆記已經有照片就不換）
 const photoBusy = new Set();
 async function placePhotoFor(it, p) {
