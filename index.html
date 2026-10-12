@@ -159,6 +159,13 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
   background:#fff;border-radius:18px 18px 0 0;padding:8px 18px calc(24px + env(safe-area-inset-bottom));
   transform:translateY(100%);transition:transform .25s ease;overscroll-behavior:contain}
 .sheet.on{transform:none}
+/* 鍵盤打開時：面板一樣貼著畫面最底下（白色延伸到鍵盤和 Safari 工具列後面），
+   下方留鍵盤高度的空白，內容停在鍵盤上方；高度不超出看得到的範圍（placeSheet 設定 padding-bottom 和 max-height） */
+.sheet-fill{display:none;position:fixed;left:0;right:0;top:100%;height:100vh;max-width:480px;margin:0 auto;background:#fff;z-index:51}
+.sheet.on:not(.dlg) + .sheet-fill{display:block}
+/* 面板打開時把頁面固定住、只留一個畫面高：iPhone 彈出鍵盤時就推不出下面的行程，露出來的只會是白色 */
+html.sheet-lock{background:#fff}
+html.sheet-lock body{position:fixed;left:0;right:0;bottom:0;overflow:hidden}
 /* 浮出來的小視窗（輸入通關密碼、確認放棄）：放在鍵盤上方的可見範圍正中間，不會被鍵盤擋住 */
 .sheet.dlg{left:16px;right:16px;bottom:auto;top:0;max-height:none;border-radius:18px;padding:18px 18px 0;
   transform:scale(.96);opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease}
@@ -352,7 +359,6 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .clr-wrap input:placeholder-shown + .clr-btn,.clr-wrap input:disabled + .clr-btn{display:none}
 .cand-grp{display:flex;align-items:center;gap:6px;margin:14px 0 6px;font-size:13px;font-weight:600;color:var(--c-fg);background:none}
 .cand-grp b{font-size:11px;font-weight:600;color:var(--muted)}
-.btn.im-go{width:100%;margin-top:8px;gap:6px}
 .im-list{display:flex;flex-direction:column;gap:10px;margin-top:16px}
 .im-list:empty{display:none}
 .im-row{position:relative;padding:10px;border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;gap:6px}
@@ -361,12 +367,21 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .im-top .im-use{flex:none;width:20px;height:20px;accent-color:var(--accent-fg)}
 .im-top .im-name{font-weight:600}
 .im-row2{display:flex;gap:6px}
-.im-note{font-size:12px;color:var(--muted)}
+.im-note{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px}
+.im-note i{flex:none;font-size:14px}
 .im-facts{font-size:12px;color:var(--text2);padding:0 2px}
 .im-note:empty{display:none}
 .im-wait{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:2px;padding-right:28px}
+.im-wait b{font-weight:inherit;display:flex;align-items:center;gap:4px}
+.im-wait b i{flex:none}
 .im-wait span{font-size:11px;word-break:break-all;opacity:.8}
 .im-row.bad .im-wait{color:#B23B3B}
+.im-lhead{display:flex;align-items:center;gap:6px;font-size:14px;padding:2px 2px 0}
+.im-lhead b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.im-lhead span{font-size:12px;color:var(--muted);flex:none}
+.im-lhead button{flex:none;border:0;background:none;color:var(--accent-fg);font:inherit;font-size:12px;padding:4px 0 4px 4px;cursor:pointer}
+.im-row.im-lite{padding:8px 10px;gap:4px}
+.im-row.im-listhead{border:0;padding:4px 0 0}
 .im-x{position:absolute;top:6px;right:6px;width:32px;height:32px;border:0;border-radius:50%;background:transparent;color:inherit;font-size:16px;cursor:pointer}
 .spin{display:inline-block;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -458,6 +473,7 @@ input.sw:focus-visible{outline:2px solid var(--accent-bg);outline-offset:2px}
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="sheet-bg" id="sheetBg"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="shTitle"></div>
+<div class="sheet-fill" aria-hidden="true"></div>
 <script>
 const PX = 1.25;                     // 1 分鐘 = 1.25px（1 小時 = 75px）
 const tl = document.getElementById('tl');
@@ -1414,7 +1430,8 @@ function openSheet(html, focusSel, dialog) {
   sheet.classList.toggle('dlg', !!dialog);
   if (dialog) placeDialog(); else sheet.style.top = '';
   sheet.classList.add('on'); sheetBg.classList.add('on');
-  document.body.style.overflow = 'hidden';
+  placeSheet();
+  lockPage(true);
   sheet.querySelector(focusSel || '.sh-close')?.focus({ preventScroll: true });
 }
 // 小視窗放在「看得到的範圍」正中間；鍵盤打開時，看得到的範圍會變小，視窗跟著往上移
@@ -1423,11 +1440,50 @@ function placeDialog() {
   const vv = window.visualViewport, top = vv ? vv.offsetTop : 0, h = vv ? vv.height : innerHeight;
   sheet.style.top = Math.round(top + Math.max(12, (h - sheet.offsetHeight) / 2)) + 'px';
 }
-if (window.visualViewport) { visualViewport.addEventListener('resize', placeDialog); visualViewport.addEventListener('scroll', placeDialog); }
+// 下方面板：iPhone 打開鍵盤時會把整個網頁往上推，面板跟著被推高、上面被裁掉；改成貼齊鍵盤上緣，內容在面板裡捲動
+// iPhone 的 innerHeight 會跟著鍵盤變小，要用版面本身的高度（固定定位的面板是對齊這個高度）來算
+const layoutH = () => document.documentElement.clientHeight || innerHeight;
+const kbOpen = () => !!window.visualViewport && layoutH() - visualViewport.height > 120;
+function placeSheet() {
+  const kb = sheet.classList.contains('on') && !sheet.classList.contains('dlg') && kbOpen();
+  sheet.classList.toggle('kb', kb);
+  if (!kb) { sheet.style.paddingBottom = ''; sheet.style.maxHeight = ''; return; }
+  const vv = visualViewport, L = layoutH(), under = Math.max(0, Math.round(L - vv.offsetTop - vv.height));   // 被鍵盤蓋住的高度
+  sheet.style.paddingBottom = (under + 12) + 'px';
+  sheet.style.maxHeight = Math.round(L - vv.offsetTop - 12) + 'px';
+}
+const placeAll = () => { placeDialog(); placeSheet(); kbDebug(); };
+// 鍵盤彈出的動畫途中，數值還沒定下來、事件也不一定會再發：點輸入框後一秒內每一格畫面都重算一次
+let kbWatch = 0;
+function watchKeyboard() {
+  const until = performance.now() + 1000, id = ++kbWatch;
+  const tick = () => { if (id !== kbWatch) return; placeAll(); if (performance.now() < until) requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+}
+sheet.addEventListener('focusin', watchKeyboard);
+sheet.addEventListener('focusout', watchKeyboard);
+// 測試用：網址加 ?kbdebug 會在左上角顯示鍵盤相關的數字
+function kbDebug() {
+  if (!/kbdebug/.test(location.search) || !window.visualViewport) return;
+  let d = document.getElementById('kbDbg');
+  if (!d) { d = document.createElement('div'); d.id = 'kbDbg'; d.style.cssText = 'position:fixed;left:0;z-index:99;background:#000;color:#0f0;font:11px monospace;padding:2px 4px;pointer-events:none'; document.body.appendChild(d); }
+  const vv = visualViewport, r = sheet.getBoundingClientRect();
+  d.style.top = Math.round(vv.offsetTop) + 'px';
+  d.textContent = `ih ${innerHeight} ch ${layoutH()} vh ${Math.round(vv.height)} top ${Math.round(vv.offsetTop)} sheet ${Math.round(r.top)}–${Math.round(r.bottom)} pad ${sheet.style.paddingBottom || '-'} kb ${kbOpen()}`;
+}
+if (window.visualViewport) { visualViewport.addEventListener('resize', placeAll); visualViewport.addEventListener('scroll', placeAll); }
+// 固定頁面時記住捲到哪裡，關掉面板再捲回來
+let lockY = null;
+function lockPage(on) {
+  const root = document.documentElement;
+  if (on && lockY === null) { lockY = scrollY; document.body.style.top = -lockY + 'px'; root.classList.add('sheet-lock'); }
+  else if (!on && lockY !== null) { root.classList.remove('sheet-lock'); document.body.style.top = ''; scrollTo(0, lockY); lockY = null; }
+}
 function closeSheet() {
   if (sheet.classList.contains('dlg')) setTimeout(() => { if (!sheet.classList.contains('on')) { sheet.classList.remove('dlg'); sheet.style.top = ''; } }, 200);
   sheet.classList.remove('on'); sheetBg.classList.remove('on');
-  document.body.style.overflow = '';
+  placeSheet();
+  lockPage(false);
   lastFocus?.focus({ preventScroll: true });
 }
 // 完整筆記裡的網址變成可以點的連結（先跳脫再找網址，避免插入 HTML）
@@ -1471,7 +1527,8 @@ let pull = null;
 sheet.addEventListener('touchstart', e => {
   if (sheet.classList.contains('dlg') || e.touches.length > 1) return;
   const onHead = e.target.closest('.grab, .sh-head');
-  if (!onHead && (sheet.scrollTop > 0 || e.target.closest('input, textarea, select, .chips, .full-txt, .ph-drag'))) return;
+  // 鍵盤打開時只能拉上方的拉桿或標題列關閉，免得想捲動內容卻把面板關掉
+  if (!onHead && (kbOpen() || sheet.scrollTop > 0 || e.target.closest('input, textarea, select, .chips, .full-txt, .ph-drag'))) return;
   pull = { y0: e.touches[0].clientY, dy: 0, t0: Date.now(), active: false };
 }, { passive: true });
 sheet.addEventListener('touchmove', e => {
@@ -2208,11 +2265,10 @@ function saveEditor() {
 function openImport() {
   openSheet(`
     <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">從 Google 地圖導入</div>
-      <div class="sh-sub">在 Google 地圖按「分享」→「複製連結」，貼在下面，一行一個（最多 10 個）</div></div>
+      <div class="sh-sub">在 Google 地圖按「分享」→「複製連結」，貼在下面，一行一個（最多 10 個）；也可以貼整個清單的連結</div></div>
       <button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
-    <label class="ed-field"><span class="ed-lab">Google 地圖連結 <span class="ed-lab-hint">也可以直接打店名</span></span>
+    <label class="ed-field"><span class="ed-lab">Google 地圖連結 <span class="ed-lab-hint">貼上就會開始查，打店名按 Enter</span></span>
       <textarea id="imLinks" rows="3" placeholder="https://maps.app.goo.gl/…" autocomplete="off" spellcheck="false"></textarea></label>
-    <button type="button" class="btn ghost im-go" id="imGo"><i class="ti ti-search"></i> 查詢</button>
     <div class="im-list" id="imList"></div>
     <div class="ed-actions">
       <button type="button" class="btn ghost ed-cancel">取消</button>
@@ -2226,23 +2282,28 @@ function openImport() {
     $('imAdd').disabled = !n; $('imAdd').textContent = n ? `加入備選（${n}）` : '加入備選';
   };
   $('imLinks').addEventListener('input', refresh);
-  $('imGo').addEventListener('click', () => {
+  // 貼上連結就直接開始查；手打店名按 Enter 查（Shift＋Enter 換行），不查直接按「加入備選」也可以
+  // 貼上後收起鍵盤，讓查詢結果有整個面板的空間；要再貼就再點一次輸入框
+  $('imLinks').addEventListener('paste', () => setTimeout(() => { if (/https?:\/\//.test($('imLinks').value)) { go(); $('imLinks').blur(); } }, 0));
+  $('imLinks').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); go(); } });
+  const go = () => {
     const links = typed();
-    if (!links.length) { $('imLinks').focus(); return; }
+    if (!links.length) return;
     $('imLinks').value = '';
     links.slice(0, 10).forEach(link => {
-      const row = div('im-row loading', `<div class="im-wait"><i class="ti ti-loader-2 spin"></i> 查詢中… <span>${esc(link)}</span></div>`);
+      const row = div('im-row loading', `<div class="im-wait"><b><i class="ti ti-loader-2 spin"></i>查詢中…</b><span>${esc(link)}</span></div>`);
       row.dataset.link = link;
       list.appendChild(row);
       lookupOne(row, link);
     });
     if (links.length > 10) toast('一次最多 10 個，多的請再貼一次');
     refresh();
-  });
+  };
   async function lookupOne(row, link) {
     try {
       const r = await api({ ...getAuth(), action: 'lookupPlace', link }, 90000);   // 沒有 Places 時要等搜尋＋AI，給久一點
       if (!row.isConnected) return;
+      if (r.list) { fillList(row, r.list); refresh(); return; }
       fillRow(row, r.place, r.note);
       // Google 地圖的資料先出來，中文描述等 AI 寫好再補進去（自己先打了就不蓋掉）
       if (r.place.places) describe(r.place).then(d => {
@@ -2255,10 +2316,31 @@ function openImport() {
       });
     } catch (err) {
       row.className = 'im-row bad';
-      row.innerHTML = `<div class="im-wait"><i class="ti ti-alert-circle"></i> ${esc(err.code === 'network' ? '連不上，請再試一次' : err.message)}<span>${esc(link)}</span></div>
+      row.innerHTML = `<div class="im-wait"><b><i class="ti ti-alert-circle"></i>${esc(err.code === 'network' ? '連不上，請再試一次' : err.message)}</b><span>${esc(link)}</span></div>
         <button type="button" class="im-x" aria-label="移除"><i class="ti ti-x"></i></button>`;
     }
     refresh();
+  }
+  // Google 地圖清單：一個地點一行，只有名稱可以改；加入後每個地點在背景查詢補資料
+  function fillList(row, l) {
+    const more = l.total > l.places.length ? `，只取前 ${l.places.length} 個` : '';
+    row.className = 'im-row im-listhead';
+    row.innerHTML = `<div class="im-lhead"><i class="ti ti-list-details"></i><b>${esc(l.title)}</b><span>${l.total} 個地點${more}</span>
+      <button type="button" class="im-all">取消全選</button></div>`;
+    if (!l.places.length) row.insertAdjacentHTML('beforeend', '<div class="im-note">這個清單是空的</div>');
+    let at = row;
+    for (const p of l.places) {
+      const dup = dupOf(p.name), r = div('im-row ready im-lite', `
+        <label class="im-top"><input type="checkbox" class="im-use"${dup ? '' : ' checked'}><input type="text" class="im-name" value="${esc(p.name)}" aria-label="名稱"></label>
+        <div class="im-note">${dup ? `<i class="ti ti-alert-triangle"></i> ${dup}已經有這個地點了` : p.note ? esc(p.note) : ''}</div>`);
+      r.dataset.map = p.map; r.dataset.note = p.note || ''; r._list = row;
+      at.after(r); at = r;
+    }
+    row.querySelector('.im-all').onclick = e => {
+      const mine = [...list.querySelectorAll('.im-lite')].filter(r => r._list === row).map(r => r.querySelector('.im-use'));
+      const on = !mine.some(c => c.checked);
+      mine.forEach(c => { c.checked = on; }); e.target.textContent = on ? '取消全選' : '全選'; refresh();
+    };
   }
   function fillRow(row, p, note) {
     const dur = p.dur || 60, durs = [...new Set([30, 60, 90, 120, 180, dur])].sort((a, b) => a - b);
@@ -2278,11 +2360,22 @@ function openImport() {
       <div class="im-note">${dup ? `<i class="ti ti-alert-triangle"></i> ${dup === 'cand' ? '備選' : `第 ${dayNum(dup)} 天`}已經有這個地點了` : note ? `<i class="ti ti-info-circle"></i> ${esc(note)}` : p.ai ? '<i class="ti ti-sparkles"></i> AI 查的資料，加入前請看一下對不對' : ''}</div>`;
   }
   list.addEventListener('change', refresh);
-  list.addEventListener('click', e => { const x = e.target.closest('.im-x'); if (x) { x.closest('.im-row').remove(); refresh(); } });
+  list.addEventListener('click', e => {
+    const x = e.target.closest('.im-x'); if (!x) return;
+    const row = x.closest('.im-row');
+    row.remove(); refresh();
+  });
   $('imAdd').addEventListener('click', () => {
     const rows = [...list.querySelectorAll('.im-row.ready')].filter(r => r.querySelector('.im-use').checked);
     const added = [];
+    let later0 = 0;   // 清單裡的地點：先加入，背景查詢
     for (const r of rows) {
+      if (r.classList.contains('im-lite')) {
+        const t = r.querySelector('.im-name').value.trim(); if (!t) continue;
+        DATA.cand.push({ id: uid(), t, desc: PENDING, cls: 'other', s: '12:00', e: '13:00', map: r.dataset.map || t, travel: '', booked: false, alert: '',
+          mine: r.dataset.note ? `清單備註：${r.dataset.note}` : '', note: '' });
+        later0++; continue;
+      }
       const q = c => r.querySelector(c).value.trim(), dur = +q('.im-dur'), p = r._p || {}, d = r._d;
       const t = q('.im-name'); if (!t) continue;
       const start = p.start ? m(p.start) : 12 * 60, area = (d && d.area) || r.dataset.area;
@@ -2300,12 +2393,15 @@ function openImport() {
       DATA.cand.push({ id: uid(), t: url ? PENDING_T : link, desc: PENDING, cls: 'other', s: '12:00', e: '13:00', map: url ? link : '',
         travel: '', booked: false, alert: '', mine: '', note: '' });
     }
-    if (!added.length && !later.length) return;
+    const bg = later.length + later0;
+    if (!added.length && !bg) return;
     saveData('從 Google 地圖導入'); closeSheet(); renderPage(current); updateHeader(current);
-    toast(later.length ? `已加入 ${added.length + later.length} 個備選，${later.length} 個在背景查詢中` : `已加入 ${added.length} 個備選`);
+    toast(bg ? `已加入 ${added.length + bg} 個備選，${bg} 個在背景查詢中` : `已加入 ${added.length} 個備選`);
     resumeLookups();
   });
 }
+// 行程或備選裡已經有同名的地點：回傳「備選」「第 N 天」
+const dupOf = name => { const k = ALL_KEYS.find(k => (DATA[k] || []).some(x => x.t.toLowerCase() === name.toLowerCase())); return k ? (k === 'cand' ? '備選' : `第 ${dayNum(k)} 天`) : ''; };
 const parseLinks = text => {
   const links = [];
   for (const line of text.split(/\n+/)) {
@@ -2321,19 +2417,32 @@ let bgRunning = 0;
 function resumeLookups() {
   if (!loaded || !getAuth()) return;
   for (const k of ALL_KEYS) for (const it of DATA[k] || [])
-    if (it.desc === PENDING && !bgBusy.has(it.id)) { bgBusy.add(it.id); bgQueue.push({ id: it.id, link: it.t && it.t !== PENDING_T ? it.t : it.map }); }   // 已經知道店名就用店名查
+    if (it.desc === PENDING && !bgBusy.has(it.id)) { bgBusy.add(it.id); bgQueue.push({ id: it.id, link: /\/maps\/place\/[^/]+\/@/.test(it.map || '') ? it.map : it.t && it.t !== PENDING_T ? it.t : it.map }); }   // 地圖連結有店名和座標（清單匯入的）最準，其次用店名查
   while (bgRunning < 3 && bgQueue.length) { bgRunning++; bgLookup(bgQueue.shift()).finally(() => { bgRunning--; resumeLookups(); }); }
 }
 async function bgLookup({ id, link }) {
   let p = null, fail = '';
-  try { p = (await api({ ...getAuth(), action: 'lookupPlace', link }, 90000)).place; }
+  let list = null;
+  try { const r = await api({ ...getAuth(), action: 'lookupPlace', link }, 90000); p = r.place; list = r.list; }
   catch (err) { if (err.code === 'network') { setTimeout(() => bgBusy.delete(id), 60000); return; } fail = err.message; }   // 沒網路：一分鐘後再試
   let [day, it] = findItem(id);
   if (!it || it.desc !== PENDING) { bgBusy.delete(id); return; }
+  if (list) {
+    // 貼的是清單連結、沒按查詢就加入：把這張換成清單裡的每個地點（已經有的跳過），再一個個查
+    bgBusy.delete(id);
+    const arr = DATA[day], add = list.places.filter(x => !dupOf(x.name));
+    arr.splice(arr.indexOf(it), 1, ...add.map(x => ({ id: uid(), t: x.name, desc: PENDING, cls: 'other', s: '12:00', e: '13:00', map: x.map, travel: '', booked: false,
+      alert: '', mine: x.note ? `清單備註：${x.note}` : '', note: '' })));
+    saveData('從 Google 地圖清單導入');
+    if (day === current && !drag) renderPage(current);
+    toast(`清單「${list.title}」加入 ${add.length} 個地點，背景查詢中`);
+    resumeLookups();
+    return;
+  }
   if (p && p.places) {
     // Google 地圖的資料先寫進去（卡片馬上有名稱、類型、時間），描述等 AI
-    const fresh = it.t === PENDING_T && it.s === '12:00' && m(it.e) - m(it.s) === 60;   // 還是剛加入時的預設值
-    if (it.t === PENDING_T || !it.t) it.t = p.name;
+    const fresh = it.s === '12:00' && m(it.e) - m(it.s) === 60;   // 還是剛加入時的預設值
+    if (it.t === PENDING_T || !it.t || (/[\u0E00-\u0E7F]/.test(it.t) && /[a-z]/i.test(p.name))) it.t = p.name;   // 泰文店名換成 Google 的英文名
     if (it.cls === 'other' && p.cls) it.cls = p.cls;
     if (fresh && p.start) { it.s = p.start; it.e = hhmm(Math.min(m(p.start) + (p.dur || 60), DAY_END)); }
     if (!it.alert) it.alert = placeAlert(p);
