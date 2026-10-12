@@ -93,7 +93,6 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .blk{position:absolute;left:4px;right:0;padding:6px 10px 5px;border:0;border-radius:8px;overflow:hidden}
 /* 名稱太長換行時，筆記按鈕接在最後一個字後面（不是夾在整段名稱右邊） */
 .blk .t{font-size:15px;font-weight:600;line-height:22px;min-height:22px}
-.blk .t .note-btn{vertical-align:top;margin-left:4px}
 .blk .t .tm{font-size:12px;font-weight:400;white-space:nowrap;margin-left:4px}
 /* 短卡片：標題列垂直置中 */
 .blk.compact{display:flex;align-items:center;padding-top:0;padding-bottom:0}
@@ -131,8 +130,8 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .nav::after{content:"";position:absolute;inset:-9px}
 .nav:active{transform:scale(.92)}
 /* 讓按鈕裡的圖示真正置中（拿掉字型行高造成的偏移） */
-.nav i,.note-btn i{display:block;width:1em;height:1em;line-height:1;text-align:center}
-.nav i::before,.note-btn i::before{display:block}
+.nav i{display:block;width:1em;height:1em;line-height:1;text-align:center}
+.nav i::before{display:block}
 .blk > .nav{position:absolute;top:6px;right:8px}   /* 卡片本身的導航鈕放右上角；展開清單裡的照常排在每一列 */
 .blk.compact > .nav{top:50%;transform:translateY(-50%)}
 .blk.has-nav{padding-right:36px}
@@ -150,11 +149,6 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .now{pointer-events:none}
 .tab.today::after{content:"";position:absolute;left:50%;bottom:2px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--accent-fg)}
 .ov-today{margin-left:6px;padding:0 6px;border-radius:999px;background:var(--accent-fg);color:#fff;font-size:10px;font-weight:600;vertical-align:1px}
-.note-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;flex:none;
-  border:0;border-radius:50%;background:rgba(255,255,255,.75);color:inherit;font-size:13px;cursor:pointer;padding:0}
-.note-btn::after{content:"";position:absolute;inset:-9px}
-.note-btn:active{transform:scale(.92)}
-.stop .note-btn{background:var(--line);color:var(--text2)}
 .sheet-bg{position:fixed;inset:0;z-index:50;background:rgba(20,20,18,.35);opacity:0;pointer-events:none;transition:opacity .2s}
 .sheet-bg.on{opacity:1;pointer-events:auto}
 .sheet{position:fixed;left:0;right:0;bottom:0;z-index:51;max-width:480px;margin:0 auto;max-height:82vh;overflow-y:auto;
@@ -196,6 +190,12 @@ html.sheet-lock body{position:fixed;left:0;right:0;bottom:0;overflow:hidden}
 .sh-head{display:flex;gap:10px;align-items:flex-start}
 .sh-title{font-size:18px;font-weight:600;line-height:1.35}
 .sh-sub{font-size:13px;color:var(--text2);margin-top:2px}
+/* 點卡片打開的資訊：描述、時間、提醒（筆記之外，卡片本身的資料） */
+.sh-desc{margin-top:12px;font-size:14px;line-height:1.6}
+.sh-meta{margin-top:8px;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2)}
+.sh-meta div{display:flex;align-items:flex-start;gap:6px;line-height:1.5}
+.sh-meta i{flex:none;font-size:15px;margin-top:1px}
+.sh-empty{margin-top:14px;font-size:13px;color:var(--muted)}
 .sh-close{flex:none;width:30px;height:30px;border-radius:50%;border:0;background:var(--line);color:var(--text2);font-size:16px;
   display:flex;align-items:center;justify-content:center;cursor:pointer}
 .sh-head .nav{border:1px solid var(--line);color:var(--text2);width:30px;height:30px}
@@ -239,7 +239,7 @@ html.sheet-lock body{position:fixed;left:0;right:0;bottom:0;overflow:hidden}
 .edit-ic i{display:block;line-height:1}
 .blk.compact .edit-ic{top:50%;transform:translateY(-50%)}
 .editing .edit-ic{display:flex}
-.editing .nav,.editing .note-btn{display:none}
+.editing .nav{display:none}
 .sub-ed{display:none;align-self:center;width:22px;height:22px;flex:none;border-radius:50%;background:var(--line);color:var(--text2);
   align-items:center;justify-content:center;font-size:12px}
 .sub-ed i{display:block;line-height:1}
@@ -261,7 +261,7 @@ html.sheet-lock body{position:fixed;left:0;right:0;bottom:0;overflow:hidden}
 .stop.sub-dragging{opacity:.3}
 .sub-ghost{position:fixed;z-index:40;pointer-events:none;background:#fff;border-radius:10px;padding:8px 12px;margin:0;
   box-shadow:0 10px 24px rgba(60,30,10,.22);opacity:.92;border:0}
-.sub-ghost .nav,.sub-ghost .note-btn,.sub-ghost .sub-ed{display:none}
+.sub-ghost .nav,.sub-ghost .sub-ed{display:none}
 .drop-slot{position:absolute;left:50px;right:4px;z-index:4;border-top:2px dashed var(--accent-fg);pointer-events:none}
 .drop-box{position:absolute;left:4px;right:0;z-index:31;border:2px dashed var(--accent-fg);border-radius:8px;pointer-events:none;
   background:color-mix(in srgb,var(--accent-fg) 6%,transparent)}
@@ -934,16 +934,11 @@ function place(el, top) {
 }
 function div(cls, html) { const d = document.createElement('div'); d.className = cls; d.innerHTML = html || ''; return d; }
 
-const hasNote = it => it.mine || richNote(it.note);
-const noteBtn = it => hasNote(it) ? `<button class="note-btn" data-note-id="${it.id}" aria-label="${esc(it.t)} 的筆記"><i class="ti ti-notes"></i></button>` : '';
-const noteBtnKey = (key, q) => richNote(key) ? `<button class="note-btn" data-note="${esc(key)}" data-q="${esc(q)}" aria-label="${esc(key)} 的筆記"><i class="ti ti-notes"></i></button>` : '';
 const navBtn = (q, name) => `<a class="nav" target="_blank" rel="noopener" href="${esc(mapHref(q))}" aria-label="導航到 ${esc(name)}"><i class="ti ti-navigation"></i></a>`;
 const editIc = '<span class="edit-ic" aria-hidden="true"><i class="ti ti-pencil"></i></span>';
 const subEditIc = '<span class="sub-ed" aria-hidden="true"><i class="ti ti-pencil"></i></span>';
-// 合併區塊裡的店家、多選一選項的筆記按鈕（筆記可能是 PDF 整理的，也可能是自己寫的）
+// 合併區塊裡的店家、多選一選項的筆記（筆記可能是 PDF 整理的，也可能是自己寫的）
 const subNoteKey = sub => sub.note || sub.orig || sub.name;
-const subNoteBtn = (id, kind, i, sub) => (sub.mine || richNote(subNoteKey(sub)))
-  ? `<button class="note-btn" data-sub="${id}|${kind}|${i}" aria-label="${esc(sub.name)} 的筆記"><i class="ti ti-notes"></i></button>` : '';
 
 const expanders = [];
 function makeExpander(el, top, h, trigger) {
@@ -960,7 +955,7 @@ function makeExpander(el, top, h, trigger) {
     if (chev) chev.className = 'ti chev ' + (open ? 'ti-chevron-up' : 'ti-chevron-down');
     relayout();
   };
-  trigger.addEventListener('click', e => { if (e.target.closest('.nav, .list, .note-btn')) return; toggle(); });
+  trigger.addEventListener('click', e => { if (e.target.closest('.nav, .list')) return; toggle(); });
   trigger.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
 }
 function relayout() {
@@ -1032,13 +1027,13 @@ function renderCards(items) {
       const rows = pick
         ? `<div class="cap">這幾間都可以去，到時候再一起選一間</div>${it.alts.map((a, i) => `
           <div class="stop" data-kind="alt" data-idx="${i}"><div class="num pick"></div>
-            <div style="flex:1;min-width:0"><div class="n">${esc(a.name)}${subNoteBtn(it.id, 'alt', i, a)}</div>${a.desc ? `<div class="o">${esc(a.desc)}</div>` : ''}
+            <div style="flex:1;min-width:0"><div class="n">${esc(a.name)}</div>${a.desc ? `<div class="o">${esc(a.desc)}</div>` : ''}
               ${a.info ? `<div class="m">${esc(a.info)}</div>` : ''}</div>
             ${a.map ? navBtn(a.map, a.name) : ''}${subEditIc}
           </div>`).join('')}<button type="button" class="add-sub" data-kind="alt"><i class="ti ti-plus"></i> 新增選項</button>`
         : `${it.stops.map((st, i) => `
           <div class="stop" data-kind="stop" data-idx="${i}"><div class="num">${i + 1}</div>
-            <div style="flex:1;min-width:0"><div class="n">${esc(st.name)}${subNoteBtn(it.id, 'stop', i, st)}</div>${st.orig ? `<div class="o">${esc(st.orig)}</div>` : ''}${st.desc ? `<div class="o">${esc(st.desc)}</div>` : ''}
+            <div style="flex:1;min-width:0"><div class="n">${esc(st.name)}</div>${st.orig ? `<div class="o">${esc(st.orig)}</div>` : ''}${st.desc ? `<div class="o">${esc(st.desc)}</div>` : ''}
               <div class="m"><i class="ti ti-clock"></i> ${T(st.s)} · ${durLabel(st.dur)}${st.area ? `　<i class="ti ti-map-pin"></i> ${esc(st.area)}` : ''}</div></div>
             ${st.map ? navBtn(st.map, st.name) : ''}${subEditIc}
           </div>`).join('')}<button type="button" class="add-sub" data-kind="stop"><i class="ti ti-plus"></i> 新增一站</button>`;
@@ -1062,8 +1057,8 @@ function renderCards(items) {
                  (it.alert ? ` · <i class="ti ti-alert-triangle"></i> ${esc(it.alert)}` : '');
     const b = div('blk ' + it.cls + (showNav ? ' has-nav' : '') + (compact ? ' compact' : '') + extra,
       compact
-        ? `<div class="t">${esc(it.t)}${noteBtn(it)}<span class="tm">· ${T(it.s)}–${T(it.e)}</span></div>${showNav ? navBtn(it.map, it.t) : ''}${editIc}`
-        : `<div class="t">${esc(it.t)}${noteBtn(it)}</div>${descLines(it, h)}<div class="s">${T(it.s)}–${T(it.e)} · ${durLabel(mins)}${tags}</div>${showNav ? navBtn(it.map, it.t) : ''}${editIc}`);
+        ? `<div class="t">${esc(it.t)}<span class="tm">· ${T(it.s)}–${T(it.e)}</span></div>${showNav ? navBtn(it.map, it.t) : ''}${editIc}`
+        : `<div class="t">${esc(it.t)}</div>${descLines(it, h)}<div class="s">${T(it.s)}–${T(it.e)} · ${durLabel(mins)}${tags}</div>${showNav ? navBtn(it.map, it.t) : ''}${editIc}`);
     b.dataset.id = it.id;
     setCol(b, it.id);
     b.style.height = h + 'px'; place(b, top);
@@ -1148,7 +1143,7 @@ function renderCand() {
     const names = it.group ? it.stops.map(x => x.short || x.name).join(' → ') : it.alts?.length ? it.alts.map(a => a.name).join('／') : '';
     const tags = (it.booked ? ' · <i class="ti ti-circle-check"></i> 已訂位' : '') + (it.alert ? ` · <i class="ti ti-alert-triangle"></i> ${esc(it.alert)}` : '');
     return `<div class="blk ${it.cls || 'eat'}${it.map && !multi ? ' has-nav' : ''}" data-id="${it.id}">
-      <div class="t">${multi ? `<i class="ti ${it.group ? 'ti-stack-2' : 'ti-arrows-split-2'}"></i> ` : ''}${esc(it.t)}${multi ? '' : noteBtn(it)}</div>
+      <div class="t">${multi ? `<i class="ti ${it.group ? 'ti-stack-2' : 'ti-arrows-split-2'}"></i> ` : ''}${esc(it.t)}</div>
       ${names ? `<div class="d">${esc(names)}</div>` : it.desc === PENDING ? '<div class="d"><i class="ti ti-loader-2 spin"></i> 查詢中，查好會自動填上</div>' : it.desc ? `<div class="d">${esc(it.desc)}</div>` : ''}
       <div class="s">預計 ${T(it.s)}–${T(it.e)} · ${durLabel(mins)}${tags}</div>
       ${it.map && !multi ? navBtn(it.map, it.t) : ''}${editIc}</div>`;
@@ -1194,12 +1189,11 @@ candEl.addEventListener('click', e => {
     if (so) { candEl.querySelector('.cand-sortbtn').classList.add('flip'); toast(`排列：${SORTS[candView.sort][1]}`); }
     return;
   }
-  const card = e.target.closest('[data-id]'); if (!card || e.target.closest('.nav, .note-btn')) return;
+  const card = e.target.closest('[data-id]'); if (!card || e.target.closest('.nav')) return;
   e.preventDefault();
-  // 編輯模式：點了編輯；一般模式：點了選要排到哪天（長按＝編輯）
+  // 編輯模式：點了編輯；一般模式：點了看資訊，資訊面板裡可以「排進行程」（長按＝編輯）
   if (editing) { openEditor(card.dataset.id); return; }
-  const go = () => openDayPicker(card.dataset.id);
-  if (getAuth()) go(); else openAuth(go);
+  openCardInfo(card.dataset.id);
 });
 
 // ---------- 總覽 ----------
@@ -1462,34 +1456,51 @@ function closeSheet() {
 }
 // 完整筆記裡的網址變成可以點的連結（先跳脫再找網址，避免插入 HTML）
 const linkify = t => esc(t).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
-function openNote(title, info, mine, q) {
+// ex：卡片本身的資料 { desc, meta: [[圖示, 文字]], action: { label, icon, fn } }
+function openNote(title, info, mine, q, ex = {}) {
   info = info || {};
   const pkey = Object.keys(pendingPhoto).find(k => NOTES[k] === info || k === title);
   if (pkey) info = { ...info, photo: pendingPhoto[pkey] };
+  // 重點裡的營業時間跟上面的提醒一樣就不重複顯示
+  if (info.points && ex.alert) { const pts = info.points.filter(p => !(/^🕒/.test(p) && ex.alert.includes(p.replace(/^🕒\s*/, '')))); info = { ...info, points: pts.length ? pts : undefined }; }
   openSheet(`
     ${info.photo ? `<div class="ph-frame sh-photo">${photoImg(info.photo, ' onerror="this.parentNode.remove()"')}</div>` : ''}
     <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">${esc(title)}</div><div class="sh-sub">${esc(info.orig || '')}</div></div>
       ${q ? navBtn(q, title) : ''}<button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
+    ${ex.desc ? `<div class="sh-desc">${esc(ex.desc)}</div>` : ''}
+    ${ex.meta?.length ? `<div class="sh-meta">${ex.meta.map(([ic, t]) => `<div><i class="ti ${ic}"></i><span>${esc(t)}</span></div>`).join('')}</div>` : ''}
     ${mine ? `<div class="mine"><b>筆記摘要</b>${esc(mine)}</div>` : ''}
     ${info.points ? `<div class="sh-sec">重點整理</div><ul class="sh-list">${info.points.map(p => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
     ${info.full ? `<details class="full-note"${info.points ? '' : ' open'}><summary>完整筆記 <i class="ti ti-chevron-down"></i></summary>
       <div class="full-txt">${linkify(info.full)}</div></details>` : ''}
-    ${info.links ? `<div class="sh-sec">參考連結</div><div class="sh-links">${info.links.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> ${esc(t)}</a>`).join('')}</div>` : ''}`);
+    ${info.links ? `<div class="sh-sec">參考連結</div><div class="sh-links">${info.links.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> ${esc(t)}</a>`).join('')}</div>` : ''}
+    ${!mine && !info.points && !info.full && !info.links && !ex.desc ? '<div class="sh-empty">還沒有筆記，長按卡片可以編輯</div>' : ''}
+    ${ex.action ? `<div class="ed-actions"><button type="button" class="btn primary sh-act" style="flex:1"><i class="ti ${ex.action.icon}"></i> ${esc(ex.action.label)}</button></div>` : ''}`);
+  if (ex.action) sheet.querySelector('.sh-act').onclick = ex.action.fn;
+}
+// 點卡片：打開這張卡片的資訊（有筆記就一起顯示）；備選的卡片多一顆「排進行程」
+function openCardInfo(id) {
+  const [day, it] = findItem(id); if (!it) return;
+  const multi = it.group || it.alts?.length, mins = m(it.e) - m(it.s);
+  const meta = [['ti-clock', `${day === 'cand' ? '預計 ' : ''}${T(it.s)}–${T(it.e)} · ${durLabel(mins)}`]];
+  if (it.group) meta.push(['ti-route', it.stops.map(x => x.short || x.name).join(' → ')]);
+  if (it.alts?.length) meta.push(['ti-arrows-split-2', it.alts.map(a => a.name).join('／')]);
+  if (it.booked) meta.push(['ti-circle-check', '已訂位']);
+  if (it.alert) meta.push(['ti-alert-triangle', it.alert]);
+  const action = day === 'cand' ? { label: '排進行程', icon: 'ti-calendar-plus', fn: () => { const go = () => openDayPicker(id); if (getAuth()) go(); else openAuth(go); } } : null;
+  openNote(it.t, multi ? null : NOTES[it.note], it.mine, multi ? '' : it.map, { desc: it.desc === PENDING ? '' : it.desc, meta, action, alert: it.alert });
+}
+// 點展開後的某一站／某個選項
+function openSubInfo(id, kind, i) {
+  const sub = subList(findItem(id)[1], kind)[i]; if (!sub) return;
+  const info = NOTES[subNoteKey(sub)], meta = [];
+  if (kind === 'stop') meta.push(['ti-clock', `${T(sub.s)} · ${durLabel(sub.dur)}${sub.area ? `　${sub.area}` : ''}`]);
+  if (sub.info) meta.push(['ti-info-circle', sub.info]);
+  openNote(sub.name, { ...info, orig: sub.orig || info?.orig }, sub.mine || info?.mine, sub.map, { desc: sub.desc, meta });
 }
 const findItem = id => { for (const k of ALL_KEYS) { if (!DATA[k]) continue; const it = DATA[k].find(x => x.id === id); if (it) return [k, it]; } return [null, null]; };
 
 document.addEventListener('click', e => {
-  const b = e.target.closest('.note-btn');
-  if (b && !editing) {
-    e.stopPropagation();
-    if (b.dataset.noteId) { const [, it] = findItem(b.dataset.noteId); openNote(it.t, NOTES[it.note], it.mine, it.map); }
-    else if (b.dataset.sub) {
-      const [id, kind, i] = b.dataset.sub.split('|'), sub = subList(findItem(id)[1], kind)[+i], info = NOTES[subNoteKey(sub)];
-      openNote(sub.name, { ...info, orig: sub.orig || sub.desc || info?.orig }, sub.mine || info?.mine, sub.map);
-    }
-    else openNote(b.dataset.note, NOTES[b.dataset.note], NOTES[b.dataset.note]?.mine, b.dataset.q);
-    return;
-  }
   if (e.target.closest('.sh-close, .ed-cancel')) closeSheet();
   // 輸入框最後面的 ✕：清空並通知原本的 input 事件（更新地圖狀態、照片預覽）
   const clr = e.target.closest('.clr-btn');
@@ -1617,6 +1628,14 @@ function openAuth(then) {
 
 // 編輯模式下：點卡片＝編輯，點空白處＝在那個時間新增
 tl.addEventListener('click', e => {
+  // 一般模式：點卡片看資訊；合併區塊、多選一點了是展開，展開後點某一站看那一站
+  if (!editing && isDay(current)) {
+    if (e.target.closest('.nav, .chev')) return;
+    const card = e.target.closest('[data-id]'), row = e.target.closest('.stop[data-kind]');
+    if (card && row) openSubInfo(card.dataset.id, row.dataset.kind, +row.dataset.idx);
+    else if (card && card.classList.contains('blk')) openCardInfo(card.dataset.id);
+    return;
+  }
   if (!editing || !isDay(current)) return;
   if (suppressClick) { suppressClick = false; e.stopPropagation(); e.preventDefault(); return; }   // 剛拖曳完，不要當成點擊
   if (e.target.closest('.chev')) return;   // 展開／收合照常運作
@@ -1887,7 +1906,7 @@ function swapItems(idA, idB) {
 }
 function subDragStart(e, x, y) {
   const row = e.target.closest('.layer .stop[data-kind]');
-  if (!row || e.target.closest('.nav, .note-btn')) return false;
+  if (!row || e.target.closest('.nav')) return false;
   const card = findItem(row.closest('[data-id]').dataset.id)[1];
   if (!card) return false;
   dragStart(x, y, row, { card, kind: row.dataset.kind, idx: +row.dataset.idx });
@@ -1922,7 +1941,7 @@ const PRESS_MS = 700;
 let press = null, pressFired = false;
 function pressStart(e, x, y) {
   if (editing || !(isDay(current) || current === 'cand') || busy || sheet.classList.contains('on')) return;
-  if (e.target.closest('.nav, .note-btn, .add-sub')) return;
+  if (e.target.closest('.nav, .add-sub')) return;
   const row = e.target.closest('.layer .stop[data-kind]'), card = e.target.closest('.layer [data-id], .cand-page [data-id]');
   if (!card) return;
   const el = row || card;
