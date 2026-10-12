@@ -91,8 +91,10 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .hr{position:absolute;left:0;width:44px;text-align:right;font-size:11px;color:var(--muted)}
 .ln{position:absolute;left:52px;right:0;border-top:1px solid var(--line)}
 .blk{position:absolute;left:4px;right:0;padding:6px 10px 5px;border:0;border-radius:8px;overflow:hidden}
-.blk .t{font-size:15px;font-weight:600;display:flex;align-items:center;gap:4px;min-height:22px}
-.blk .t .tm{font-size:12px;font-weight:400;white-space:nowrap}
+/* 名稱太長換行時，筆記按鈕接在最後一個字後面（不是夾在整段名稱右邊） */
+.blk .t{font-size:15px;font-weight:600;line-height:22px;min-height:22px}
+.blk .t .note-btn{vertical-align:top;margin-left:4px}
+.blk .t .tm{font-size:12px;font-weight:400;white-space:nowrap;margin-left:4px}
 /* 短卡片：標題列垂直置中 */
 .blk.compact{display:flex;align-items:center;padding-top:0;padding-bottom:0}
 .blk .s{font-size:12px;margin-top:1px}
@@ -159,10 +161,6 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
   background:#fff;border-radius:18px 18px 0 0;padding:8px 18px calc(24px + env(safe-area-inset-bottom));
   transform:translateY(100%);transition:transform .25s ease;overscroll-behavior:contain}
 .sheet.on{transform:none}
-/* 鍵盤打開時：面板一樣貼著畫面最底下（白色延伸到鍵盤和 Safari 工具列後面），
-   下方留鍵盤高度的空白，內容停在鍵盤上方；高度不超出看得到的範圍（placeSheet 設定 padding-bottom 和 max-height） */
-.sheet-fill{display:none;position:fixed;left:0;right:0;top:100%;height:100vh;max-width:480px;margin:0 auto;background:#fff;z-index:51}
-.sheet.on:not(.dlg) + .sheet-fill{display:block}
 /* 面板打開時把頁面固定住、只留一個畫面高：iPhone 彈出鍵盤時就推不出下面的行程，露出來的只會是白色 */
 html.sheet-lock{background:#fff}
 html.sheet-lock body{position:fixed;left:0;right:0;bottom:0;overflow:hidden}
@@ -473,7 +471,6 @@ input.sw:focus-visible{outline:2px solid var(--accent-bg);outline-offset:2px}
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="sheet-bg" id="sheetBg"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="shTitle"></div>
-<div class="sheet-fill" aria-hidden="true"></div>
 <script>
 const PX = 1.25;                     // 1 分鐘 = 1.25px（1 小時 = 75px）
 const tl = document.getElementById('tl');
@@ -1430,7 +1427,6 @@ function openSheet(html, focusSel, dialog) {
   sheet.classList.toggle('dlg', !!dialog);
   if (dialog) placeDialog(); else sheet.style.top = '';
   sheet.classList.add('on'); sheetBg.classList.add('on');
-  placeSheet();
   lockPage(true);
   sheet.querySelector(focusSel || '.sh-close')?.focus({ preventScroll: true });
 }
@@ -1440,29 +1436,9 @@ function placeDialog() {
   const vv = window.visualViewport, top = vv ? vv.offsetTop : 0, h = vv ? vv.height : innerHeight;
   sheet.style.top = Math.round(top + Math.max(12, (h - sheet.offsetHeight) / 2)) + 'px';
 }
-// 下方面板：iPhone 打開鍵盤時會把整個網頁往上推，面板跟著被推高、上面被裁掉；改成貼齊鍵盤上緣，內容在面板裡捲動
-// iPhone 的 innerHeight 會跟著鍵盤變小，要用版面本身的高度（固定定位的面板是對齊這個高度）來算
-const layoutH = () => document.documentElement.clientHeight || innerHeight;
-const kbOpen = () => !!window.visualViewport && layoutH() - visualViewport.height > 120;
-function placeSheet() {
-  const kb = sheet.classList.contains('on') && !sheet.classList.contains('dlg') && kbOpen();
-  sheet.classList.toggle('kb', kb);
-  if (!kb) { sheet.style.paddingBottom = ''; sheet.style.maxHeight = ''; return; }
-  const vv = visualViewport, L = layoutH(), under = Math.max(0, Math.round(L - vv.offsetTop - vv.height));   // 被鍵盤蓋住的高度
-  sheet.style.paddingBottom = (under + 12) + 'px';
-  sheet.style.maxHeight = Math.round(L - vv.offsetTop - 12) + 'px';
-}
-const placeAll = () => { placeDialog(); placeSheet(); };
-// 鍵盤彈出的動畫途中，數值還沒定下來、事件也不一定會再發：點輸入框後一秒內每一格畫面都重算一次
-let kbWatch = 0;
-function watchKeyboard() {
-  const until = performance.now() + 1000, id = ++kbWatch;
-  const tick = () => { if (id !== kbWatch) return; placeAll(); if (performance.now() < until) requestAnimationFrame(tick); };
-  requestAnimationFrame(tick);
-}
-sheet.addEventListener('focusin', watchKeyboard);
-sheet.addEventListener('focusout', watchKeyboard);
-if (window.visualViewport) { visualViewport.addEventListener('resize', placeAll); visualViewport.addEventListener('scroll', placeAll); }
+// 正在面板裡打字（鍵盤開著）：游標在面板的輸入框裡
+const kbOpen = () => { const a = document.activeElement; return !!a && sheet.contains(a) && a.matches('input[type=text], input[type=password], input:not([type]), textarea'); };
+if (window.visualViewport) { visualViewport.addEventListener('resize', placeDialog); visualViewport.addEventListener('scroll', placeDialog); }
 // 固定頁面時記住捲到哪裡，關掉面板再捲回來
 let lockY = null;
 function lockPage(on) {
@@ -1470,10 +1446,17 @@ function lockPage(on) {
   if (on && lockY === null) { lockY = scrollY; document.body.style.top = -lockY + 'px'; root.classList.add('sheet-lock'); }
   else if (!on && lockY !== null) { root.classList.remove('sheet-lock'); document.body.style.top = ''; scrollTo(0, lockY); lockY = null; }
 }
+// 頁面固定住時，iPhone 彈出鍵盤會把畫面往上推；鍵盤收起後畫面回來了，點擊的位置卻還是偏的（點上面勾到下面）
+// 鍵盤收起（離開輸入框、可見範圍變回來）就把被推走的捲動歸零，畫面和點擊位置重新對齊
+function realign() {
+  if (lockY === null || kbOpen()) return;
+  if (scrollY || (window.visualViewport && visualViewport.offsetTop)) scrollTo(0, 0);
+}
+sheet.addEventListener('focusout', () => setTimeout(realign, 60));
+if (window.visualViewport) visualViewport.addEventListener('resize', () => setTimeout(realign, 60));
 function closeSheet() {
   if (sheet.classList.contains('dlg')) setTimeout(() => { if (!sheet.classList.contains('on')) { sheet.classList.remove('dlg'); sheet.style.top = ''; } }, 200);
   sheet.classList.remove('on'); sheetBg.classList.remove('on');
-  placeSheet();
   lockPage(false);
   lastFocus?.focus({ preventScroll: true });
 }
@@ -2267,7 +2250,9 @@ function openImport() {
     </div>`);   // 不自動跳出鍵盤，不然會把面板擋住
   const $ = id => sheet.querySelector('#' + id), list = $('imList');
   // 「加入備選」可以直接按：已經查好的照預覽加入；還沒查、查詢中的先加入，背景繼續查
-  const typed = () => parseLinks($('imLinks').value);
+  // 貼上的連結留在輸入框裡（看得出有貼成功），已經開始查的不會再查一次、也不會重複加入
+  const done = new Set();
+  const typed = () => parseLinks($('imLinks').value).filter(l => !done.has(l));
   const refresh = () => {
     const n = list.querySelectorAll('.im-row.ready .im-use:checked, .im-row.loading').length + typed().length;
     $('imAdd').disabled = !n; $('imAdd').textContent = n ? `加入備選（${n}）` : '加入備選';
@@ -2276,11 +2261,16 @@ function openImport() {
   // 貼上連結就直接開始查；手打店名按 Enter 查（Shift＋Enter 換行），不查直接按「加入備選」也可以
   // 貼上後收起鍵盤，讓查詢結果有整個面板的空間；要再貼就再點一次輸入框
   $('imLinks').addEventListener('paste', () => setTimeout(() => { if (/https?:\/\//.test($('imLinks').value)) { go(); $('imLinks').blur(); } }, 0));
-  $('imLinks').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); go(); } });
+  $('imLinks').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    e.preventDefault();
+    const t = $('imLinks');
+    if (go() && !t.value.endsWith('\n')) t.value += '\n';   // 換到下一行，可以接著打下一個
+  });
   const go = () => {
     const links = typed();
-    if (!links.length) return;
-    $('imLinks').value = '';
+    if (!links.length) return false;
+    links.slice(0, 10).forEach(l => done.add(l));
     links.slice(0, 10).forEach(link => {
       const row = div('im-row loading', `<div class="im-wait"><b><i class="ti ti-loader-2 spin"></i>查詢中…</b><span>${esc(link)}</span></div>`);
       row.dataset.link = link;
@@ -2289,6 +2279,7 @@ function openImport() {
     });
     if (links.length > 10) toast('一次最多 10 個，多的請再貼一次');
     refresh();
+    return true;
   };
   async function lookupOne(row, link) {
     try {
@@ -2354,6 +2345,7 @@ function openImport() {
   list.addEventListener('click', e => {
     const x = e.target.closest('.im-x'); if (!x) return;
     const row = x.closest('.im-row');
+    done.delete(row.dataset.link);   // 移除後再貼一次同一個連結可以重查
     row.remove(); refresh();
   });
   $('imAdd').addEventListener('click', () => {
