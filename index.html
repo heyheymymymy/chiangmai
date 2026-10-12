@@ -1452,7 +1452,7 @@ function placeSheet() {
   sheet.style.paddingBottom = (under + 12) + 'px';
   sheet.style.maxHeight = Math.round(L - vv.offsetTop - 12) + 'px';
 }
-const placeAll = () => { placeDialog(); placeSheet(); kbDebug(); };
+const placeAll = () => { placeDialog(); placeSheet(); };
 // 鍵盤彈出的動畫途中，數值還沒定下來、事件也不一定會再發：點輸入框後一秒內每一格畫面都重算一次
 let kbWatch = 0;
 function watchKeyboard() {
@@ -1462,15 +1462,6 @@ function watchKeyboard() {
 }
 sheet.addEventListener('focusin', watchKeyboard);
 sheet.addEventListener('focusout', watchKeyboard);
-// 測試用：網址加 ?kbdebug 會在左上角顯示鍵盤相關的數字
-function kbDebug() {
-  if (!/kbdebug/.test(location.search) || !window.visualViewport) return;
-  let d = document.getElementById('kbDbg');
-  if (!d) { d = document.createElement('div'); d.id = 'kbDbg'; d.style.cssText = 'position:fixed;left:0;z-index:99;background:#000;color:#0f0;font:11px monospace;padding:2px 4px;pointer-events:none'; document.body.appendChild(d); }
-  const vv = visualViewport, r = sheet.getBoundingClientRect();
-  d.style.top = Math.round(vv.offsetTop) + 'px';
-  d.textContent = `ih ${innerHeight} ch ${layoutH()} vh ${Math.round(vv.height)} top ${Math.round(vv.offsetTop)} sheet ${Math.round(r.top)}–${Math.round(r.bottom)} pad ${sheet.style.paddingBottom || '-'} kb ${kbOpen()}`;
-}
 if (window.visualViewport) { visualViewport.addEventListener('resize', placeAll); visualViewport.addEventListener('scroll', placeAll); }
 // 固定頁面時記住捲到哪裡，關掉面板再捲回來
 let lockY = null;
