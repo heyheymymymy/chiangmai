@@ -614,8 +614,8 @@ function applyServer(r) {
 }
 
 // 比較內容時：空字串、false、空清單都當成「沒有」
-const ITEM_KEYS = ['s', 'e', 'cls', 't', 'desc', 'hours', 'map', 'travel', 'booked', 'alert', 'mine', 'note', 'group', 'stops', 'alts'];
-const SUB_KEYS = ['s', 'dur', 'name', 'short', 'orig', 'area', 'desc', 'info', 'map', 'mine', 'note'];
+const ITEM_KEYS = ['s', 'e', 'cls', 't', 'desc', 'hours', 'map', 'loc', 'pid', 'travel', 'booked', 'alert', 'mine', 'note', 'group', 'stops', 'alts'];
+const SUB_KEYS = ['s', 'dur', 'name', 'short', 'orig', 'area', 'desc', 'info', 'map', 'loc', 'pid', 'mine', 'note'];
 const isEmpty = v => v === '' || v == null || v === false;
 const canonSub = x => { const o = {}; SUB_KEYS.forEach(k => { if (!isEmpty(x[k])) o[k] = k === 'dur' ? +x[k] : x[k]; }); return o; };
 const canon = it => {
@@ -887,7 +887,7 @@ async function load(force) {
     lastLoad = Date.now(); loadRetry = 0;
     if (!force && (syncing || pendingOps().count)) return;   // 等待期間又改了東西：這次先不要蓋掉
     if (editing && !force) { deferred = r; return; }         // 編輯中不要整頁換掉，按「完成」後再套用
-    applyServer(r); refreshView(); resumeLookups();
+    applyServer(r); refreshView(); resumeLookups(); setTimeout(locateMissing, 3000);
   } catch (e) {
     if (!loaded) { loadErr = true; refreshView(); setTimeout(load, 10000); }   // 還沒有任何資料：10 秒後再試
     else if (loadRetry < 5) { loadRetry++; setTimeout(load, 15000); }       // 先顯示手機裡的舊資料，雲端讀取失敗（Google 偶爾回錯誤頁）：15 秒後再試，最多 5 次
@@ -1982,7 +1982,7 @@ function mergeInto(id, cardId, idx, before) {
   if (!src || !card) return false;
   if (src.booked && !confirm(`「${src.t}」是已訂位的行程，確定要放進「${card.t}」嗎？`)) return false;
   const snapshot = before || JSON.parse(JSON.stringify(list));
-  const base = { name: src.t, desc: src.desc || '', map: src.map, mine: src.mine, note: src.note || (NOTES[src.t] ? src.t : '') };
+  const base = { name: src.t, desc: src.desc || '', map: src.map, loc: src.loc || '', pid: src.pid || '', mine: src.mine, note: src.note || (NOTES[src.t] ? src.t : '') };
   if (card.group) {
     // 插在第 idx 站：接在前一站後面開始，後面的站如果被擠到就往後順延
     const stops = card.stops, dur = m(src.e) - m(src.s);
@@ -2013,7 +2013,7 @@ function pullOut(sub, at, intoId, intoIdx) {
   const dur = sub.kind === 'stop' ? x.dur : m(card.e) - m(card.s);
   const start = at ?? (sub.kind === 'stop' ? m(x.s) : m(card.s));
   const it = { id: uid(), t: x.name, desc: x.desc || '', cls: card.cls, s: hhmm(start), e: hhmm(Math.min(start + dur, DAY_END)),
-    map: x.map || '', mine: x.mine || '', note: x.note || '', alert: sub.kind === 'alt' ? x.info || '' : '', travel: '' };
+    map: x.map || '', loc: x.loc || '', pid: x.pid || '', mine: x.mine || '', note: x.note || '', alert: sub.kind === 'alt' ? x.info || '' : '', travel: '' };
   subs.splice(sub.idx, 1);
   let gone = '';
   if (!subs.length) { list.splice(list.indexOf(card), 1); gone = `，「${card.t}」已經空了，一起拿掉`; }   // 最後一個被拉走：外面那張卡片也拿掉
@@ -2365,12 +2365,14 @@ function saveEditor() {
     ...(fullEl && (NOTES[noteKey] || photoTouched) ? { note: noteKey } : {}), booked: $('edBooked').checked,
     alert: $('edAlert').value.trim(), mine: $('edMine').value.trim(),
   });
+  if (fields.map !== undefined && fields.map !== ed.map) Object.assign(fields, { loc: '', pid: '' });   // 地點換了：座標之後在背景重查
   if (ed.kind !== 'one') {
     // 這張卡片變成第一站／第一個選項，卡片本身改用新的標題
     const it = ed.isNew ? { id: uid() } : findItem(ed.id)[1];
     if (!ed.isNew && push && delta) laterItems().forEach(x => { x.s = hhmm(m(x.s) + delta); x.e = hhmm(m(x.e) + delta); });
-    const first = { name: t, desc: fields.desc, map: fields.map, mine: fields.mine, note: it.note || (NOTES[t] ? t : '') };
-    Object.assign(it, fields, { t: gt, desc: '', map: '', mine: '', note: '' });
+    const first = { name: t, desc: fields.desc, map: fields.map, mine: fields.mine, note: it.note || (NOTES[t] ? t : ''),
+      loc: fields.loc ?? it.loc ?? '', pid: fields.pid ?? it.pid ?? '' };
+    Object.assign(it, fields, { t: gt, desc: '', map: '', mine: '', note: '', loc: '', pid: '' });
     if (ed.kind === 'group') { it.group = true; it.stops = [{ ...first, s: fields.s, dur: ed.dur }]; delete it.alts; }
     else { it.alts = [{ ...first, info: fields.alert }]; it.alert = ''; }   // 「只收現金」這類提醒是那一家店的，跟著選項走
     if (ed.isNew) DATA[ed.day].push(it); else moveDay(it.id, ed.fromDay, ed.day);
@@ -2518,7 +2520,7 @@ function openImport() {
     for (const r of rows) {
       if (r.classList.contains('im-lite')) {
         const t = r.querySelector('.im-name').value.trim(); if (!t) continue;
-        DATA.cand.push({ id: uid(), t, desc: PENDING, cls: 'other', s: '12:00', e: '13:00', map: r.dataset.map || t, travel: '', booked: false, alert: '',
+        DATA.cand.push({ id: uid(), t, desc: PENDING, cls: 'other', s: '12:00', e: '13:00', map: r.dataset.map || t, loc: locFromUrl(r.dataset.map), travel: '', booked: false, alert: '',
           mine: r.dataset.note ? `清單備註：${r.dataset.note}` : '', note: '' });
         later0++; continue;
       }
@@ -2526,7 +2528,8 @@ function openImport() {
       const t = q('.im-name'); if (!t) continue;
       const start = p.start ? m(p.start) : 12 * 60, area = (d && d.area) || r.dataset.area;
       const it = { id: uid(), t, desc: q('.im-desc'), cls: q('.im-cls'), s: hhmm(start), e: hhmm(Math.min(start + dur, DAY_END)), map: r.dataset.map || t,
-        travel: '', booked: false, alert: q('.im-alert'), mine: [area ? `位置：${area}` : '', d && d.alert ? `提醒：${d.alert}` : ''].filter(Boolean).join('\n'), note: '', hours: p.hours || '' };
+        travel: '', booked: false, alert: q('.im-alert'), mine: [area ? `位置：${area}` : '', d && d.alert ? `提醒：${d.alert}` : ''].filter(Boolean).join('\n'), note: '', hours: p.hours || '',
+        loc: p.loc || '', pid: p.pid || '' };
       // 有 Google 地圖的資料但 AI 描述還沒好：先加入，描述留給背景查詢補
       if (p.places && !it.desc && !d) it.desc = PENDING;
       DATA.cand.push(it);
@@ -2548,6 +2551,39 @@ function openImport() {
 }
 // 行程或備選裡已經有同名的地點：回傳「備選」「第 N 天」
 const dupOf = name => { const k = ALL_KEYS.find(k => (DATA[k] || []).some(x => x.t.toLowerCase() === name.toLowerCase())); return k ? (k === 'cand' ? '備選' : `第 ${dayNum(k)} 天`) : ''; };
+// 地圖網址裡的「/@緯度,經度」（清單匯入的連結有）
+const locFromUrl = u => { const mm = /\/@(-?\d+\.\d+),(-?\d+\.\d+)/.exec(u || ''); return mm ? (+mm[1]).toFixed(6) + ',' + (+mm[2]).toFixed(6) : ''; };
+// 背景補座標：有地點但還沒有座標的卡片、每一站、每個選項（新加的、改過地圖的），用 Google 地圖查一次存起來
+const locTried = new Set();
+let locRunning = false;
+async function locateMissing() {
+  if (locRunning || !loaded || !getAuth() || editing) return;
+  const jobs = [];
+  for (const k of ALL_KEYS) for (const it of DATA[k] || []) {
+    if (it.desc === PENDING) continue;   // 還在背景查詢的，查好就有座標
+    const ents = it.group || it.alts?.length ? [...(it.stops || []), ...(it.alts || [])] : [it];
+    for (const x of ents) {
+      const q = x.map || x.name || x.t, key = it.id + '|' + q;
+      if (x.loc || !q || locTried.has(key) || (it.cls === 'other' && !/^https?:/.test(q))) continue;
+      locTried.add(key); jobs.push({ id: it.id, x, q });
+    }
+  }
+  if (!jobs.length) return;
+  locRunning = true;
+  let n = 0;
+  for (const j of jobs) {
+    const fromUrl = locFromUrl(j.q);
+    let loc = fromUrl, pid = '';
+    if (!loc) {
+      try { const p = (await api({ ...getAuth(), action: 'lookupPlace', link: /^https?:/.test(j.q) || /chiang/i.test(j.q) ? j.q : j.q + ' Chiang Mai' }, 60000)).place; if (p?.places) { loc = p.loc; pid = p.pid || ''; } }
+      catch {}
+    }
+    const [, it] = findItem(j.id);
+    if (loc && it && !j.x.loc && (j.x.map || j.x.name || j.x.t) === j.q) { j.x.loc = loc; j.x.pid = pid; n++; }
+  }
+  locRunning = false;
+  if (n && !editing) saveData('補座標');
+}
 const parseLinks = text => {
   const links = [];
   for (const line of text.split(/\n+/)) {
@@ -2577,7 +2613,7 @@ async function bgLookup({ id, link }) {
     // 貼的是清單連結、沒按查詢就加入：把這張換成清單裡的每個地點（已經有的跳過），再一個個查
     bgBusy.delete(id);
     const arr = DATA[day], add = list.places.filter(x => !dupOf(x.name));
-    arr.splice(arr.indexOf(it), 1, ...add.map(x => ({ id: uid(), t: x.name, desc: PENDING, cls: 'other', s: '12:00', e: '13:00', map: x.map, travel: '', booked: false,
+    arr.splice(arr.indexOf(it), 1, ...add.map(x => ({ id: uid(), t: x.name, desc: PENDING, cls: 'other', s: '12:00', e: '13:00', map: x.map, loc: locFromUrl(x.map), travel: '', booked: false,
       alert: '', mine: x.note ? `清單備註：${x.note}` : '', note: '' })));
     saveData('從 Google 地圖清單導入');
     if (day === current && !drag) renderPage(current);
@@ -2594,6 +2630,7 @@ async function bgLookup({ id, link }) {
     if (!it.alert) it.alert = placeAlert(p);
     if (!it.hours && p.hours) it.hours = p.hours;
     if (!it.map && p.gmap) it.map = p.gmap;
+    if (p.loc && !it.pid) { it.loc = p.loc; it.pid = p.pid || ''; }   // Google 的座標比清單網址裡的準
     placeNote(it, p); placePhotoFor(it, p);
     saveData('查詢地點');
     if (day === current && !drag) renderPage(current);
@@ -2784,7 +2821,7 @@ function openSubEditor(cardId, kind, idx, fromCand) {
   const c = fromCand && (DATA.cand || []).find(x => x.id === fromCand);
   const area = c && kind === 'stop' ? /^位置：(.+)$/m.exec(c.mine || '') : null;   // 導入時寫的「位置：寧曼」→ 一站的區域欄位
   const sub = c
-    ? { name: c.t, desc: c.desc === PENDING ? '' : c.desc || '', info: c.alert || '', map: c.map || '', note: c.note || '', s: at, dur: m(c.e) - m(c.s),
+    ? { name: c.t, desc: c.desc === PENDING ? '' : c.desc || '', info: c.alert || '', map: c.map || '', loc: c.loc || '', pid: c.pid || '', note: c.note || '', s: at, dur: m(c.e) - m(c.s),
         area: area ? area[1].trim() : '',
         mine: kind === 'stop' ? [(c.mine || '').replace(/^位置：.+$\n?/m, '').trim(), c.alert].filter(Boolean).join('\n') : c.mine || '' }   // 一站沒有提醒欄位，提醒併進筆記摘要
     : isNew ? (kind === 'stop' ? { s: at, dur: 15, name: '' } : { name: '' }) : list[idx];
@@ -2854,6 +2891,7 @@ function saveSub() {
   const old = sed.isNew ? sed.prefill || {} : list[sed.idx];
   const sub = { ...old, name, map: $('sbMap').value.trim(), mine: $('sbMine').value.trim() };
   if (name !== old.name) delete sub.short;                      // 改了名字，收合時就顯示新名字
+  if (sub.map !== (old.map || '')) { sub.loc = ''; sub.pid = ''; }   // 地點換了：座標之後在背景重查
   if (!old.note && NOTES[subNoteKey(old)]) sub.note = subNoteKey(old);   // 改名後還找得到原本整理好的筆記
   const noteKey = sed.isNew && !sed.prefill ? name : subNoteKey(old);
   const fullChanged = setFullNote(noteKey, $('sbFull').value.trim()), photoChanged = savePhoto('sbPhoto', noteKey);
