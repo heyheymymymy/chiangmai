@@ -103,6 +103,9 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .ck-txt{flex:1;min-width:0;padding:0;border:0;background:none;font:inherit;font-size:14px;line-height:1.45;color:var(--text);text-align:left;cursor:pointer;word-break:break-word}
 .ck.done .ck-txt{color:var(--muted);text-decoration:line-through}
 .ck-who{display:inline-block;margin-left:6px;padding:0 7px;border-radius:999px;background:var(--line);color:var(--text2);font-size:11px;line-height:18px;text-decoration:none;vertical-align:1px}
+.ck{position:relative;background:#fff;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.ck.ck-shift{transition:transform .15s ease}
+.ck.ck-lift{z-index:2;box-shadow:0 6px 18px rgba(60,40,20,.16);border-radius:10px;border-top-color:transparent;transform-origin:center}
 .ck-add{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line)}
 .ck-add i{flex:none;width:22px;text-align:center;color:var(--muted);font-size:15px}
 .ck-add input{flex:1;min-width:0;height:34px;padding:0;border:0;background:none;font:inherit;font-size:16px;color:var(--text)}
@@ -1273,6 +1276,7 @@ function renderOverview() {
   ovEl.innerHTML = html;
 }
 ovEl.addEventListener('click', e => {
+  if (ckSuppress) { ckSuppress = false; e.preventDefault(); e.stopPropagation(); return; }   // 剛拖曳完放開的那一下，不算點擊
   const b = e.target.closest('[data-go]'); if (b) { showPage(b.dataset.go); return; }
   const row = e.target.closest('[data-ck]'); if (!row) return;
   const c = CHECKS.find(x => x.id === row.dataset.ck); if (!c) return;
@@ -1293,6 +1297,58 @@ ovEl.addEventListener('keydown', e => {
 });
 ovEl.addEventListener('focusout', e => { if (e.target.matches('.ck-new')) addCheck(e.target); });
 const withAuth = fn => getAuth() ? fn() : openAuth(fn);
+// 長按待辦／注意事項 0.45 秒拿起來，上下拖曳換順序，放開就存
+let ckPress = null, ckDrag = null, ckSuppress = false;
+function ckDown(e, y) {
+  const row = e.target.closest('.ck[data-ck]'); if (!row || ckDrag) return;
+  ckPress = { row, y, timer: setTimeout(() => ckLift(row, y), 450) };
+}
+function ckCancel() { if (ckPress) { clearTimeout(ckPress.timer); ckPress = null; } }
+function ckLift(row, y) {
+  ckPress = null;
+  const rows = [...row.parentNode.querySelectorAll('.ck[data-ck]')];
+  if (rows.length < 2) return;
+  const h = row.getBoundingClientRect().height;
+  ckDrag = { row, rows, y0: y, h, from: rows.indexOf(row), to: rows.indexOf(row),
+    mids: rows.map(r => { const b = r.getBoundingClientRect(); return b.top + b.height / 2; }) };
+  rows.forEach(r => { if (r !== row) r.classList.add('ck-shift'); });
+  row.classList.add('ck-lift'); row.style.transform = 'scale(1.02)';
+  navigator.vibrate?.(10);
+}
+function ckMove(y) {
+  const d = ckDrag, dy = y - d.y0, mid = d.mids[d.from] + dy;
+  d.row.style.transform = `translateY(${dy}px) scale(1.02)`;
+  // 拖到哪裡：拿起來那一列的中心越過別列的中心，那一列就讓位
+  let to = d.from;
+  d.rows.forEach((r, i) => { if (i < d.from && mid < d.mids[i]) to = Math.min(to, i); if (i > d.from && mid > d.mids[i]) to = Math.max(to, i); });
+  d.to = to;
+  d.rows.forEach((r, i) => {
+    if (r === d.row) return;
+    const shift = i > d.from && i <= to ? -d.h : i < d.from && i >= to ? d.h : 0;
+    r.style.transform = shift ? `translateY(${shift}px)` : '';
+  });
+}
+function ckDrop() {
+  const d = ckDrag; ckDrag = null; ckSuppress = true; setTimeout(() => { ckSuppress = false; }, 400);
+  d.rows.forEach(r => { r.style.transform = ''; r.classList.remove('ck-shift', 'ck-lift'); });
+  if (d.to === d.from) return;
+  // 新的順序沿用原本那幾個順序號碼，只改有動到的
+  const items = d.rows.map(r => CHECKS.find(c => c.id === r.dataset.ck)), nums = items.map(c => c.order).sort((a, b) => a - b);
+  const moved = items.splice(d.from, 1)[0]; items.splice(d.to, 0, moved);
+  const changed = items.map((c, i) => c.order === nums[i] ? null : { ...c, order: nums[i] }).filter(Boolean);
+  withAuth(() => saveChecks(changed));
+}
+ovEl.addEventListener('touchstart', e => { if (e.touches.length === 1) ckDown(e, e.touches[0].clientY); else ckCancel(); }, { passive: true });
+ovEl.addEventListener('touchmove', e => {
+  if (ckDrag) { e.preventDefault(); ckMove(e.touches[0].clientY); return; }
+  if (ckPress && Math.abs(e.touches[0].clientY - ckPress.y) > 8) ckCancel();
+}, { passive: false });
+ovEl.addEventListener('touchend', () => { ckCancel(); if (ckDrag) ckDrop(); });
+ovEl.addEventListener('touchcancel', () => { ckCancel(); if (ckDrag) { ckDrag.to = ckDrag.from; ckDrop(); } });
+ovEl.addEventListener('mousedown', e => { if (e.button === 0 && !e.target.closest('input')) ckDown(e, e.clientY); });
+addEventListener('mousemove', e => { if (ckDrag) ckMove(e.clientY); else if (ckPress && Math.abs(e.clientY - ckPress.y) > 8) ckCancel(); });
+addEventListener('mouseup', () => { ckCancel(); if (ckDrag) ckDrop(); });
+ovEl.addEventListener('contextmenu', e => { if (e.target.closest('.ck[data-ck]')) e.preventDefault(); });
 // 存待辦、注意事項：畫面先更新，背景存到雲端；存失敗就提示並重新載入雲端的版本
 async function saveChecks(items, deleted = []) {
   for (const it of items) { const i = CHECKS.findIndex(c => c.id === it.id); if (i >= 0) CHECKS[i] = it; else CHECKS.push(it); }
@@ -1467,6 +1523,7 @@ function edgeSwipe(el, dir, page) {
     const t = e.touches[0]; osw = { x: t.clientX, y: t.clientY, t: performance.now(), dx: 0, lock: null };
   }, { passive: true });
   el.addEventListener('touchmove', e => {
+    if (ckDrag) osw = null;   // 正在拖曳待辦換順序：不是換頁
     if (!osw) return;
     const t = e.touches[0], dx = t.clientX - osw.x, dy = t.clientY - osw.y;
     if (!osw.lock) {
