@@ -262,6 +262,33 @@ html.on-map:not(.sheet-lock),html.on-map:not(.sheet-lock) body{background:#f4f0e
 .map-msg{position:absolute;left:16px;right:16px;top:16px;z-index:2;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.94);
   box-shadow:0 2px 10px rgba(60,40,20,.12);font-size:13px;color:var(--text2);text-align:center}
 .map-msg:empty{display:none}
+/* 放大縮小：自己做的按鈕，跟頁首的按鈕同一個樣式（Google 內建的關掉） */
+.map-zoom{position:absolute;right:12px;bottom:36px;z-index:2;display:flex;flex-direction:column;gap:8px}
+.map-view.has-strip .map-zoom{bottom:80px}
+/* 地圖最底下一條米色，蓋住 Google 標誌和版權字（使用者自己的決定，個人使用） */
+.map-cover{position:absolute;left:0;right:0;bottom:0;height:72px;z-index:2;pointer-events:none;
+  background:linear-gradient(to top,#f4f0e9 0,#f4f0e9 26px,rgba(244,240,233,0) 100%)}   /* 底下 26px 實色蓋住字樣，往上淡出 */
+/* 底部的地點卡片列：左右滑、一張一張停；放在 Google 標誌和版權字的上面（那些依條款要看得到） */
+.map-strip{position:absolute;left:0;right:0;bottom:0;z-index:2;display:flex;gap:8px;padding:6px 16px 4px;overflow-x:auto;scroll-snap-type:x mandatory;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+.map-strip::-webkit-scrollbar{display:none}
+.map-strip:empty{display:none}
+.ms-card{flex:none;width:min(240px,72vw);scroll-snap-align:center;display:flex;align-items:flex-start;gap:8px;padding:9px 10px;border:1px solid var(--line);
+  border-radius:12px;background:#fff;box-shadow:0 2px 8px rgba(60,40,20,.12);font:inherit;color:var(--text);text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.ms-card.on{border-color:var(--c-fg);box-shadow:0 3px 12px rgba(60,40,20,.2)}
+.ms-card b{flex:none;width:22px;height:22px;border-radius:50%;background:var(--c-fg);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.ms-card.alt b{background:#fff;color:var(--c-fg);border:1.5px dashed var(--c-fg)}
+.ms-card.nonum b{width:10px;height:10px;margin-top:5px}
+.ms-txt{min-width:0;flex:1}
+.ms-txt div{font-size:14px;font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ms-txt span{display:block;margin-top:2px;font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pin.on{z-index:3}
+.pin.on b{transform:scale(1.25);transition:transform .15s}
+.map-view.far .pin.on span{display:block}
+.map-zoom button{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--text2);font-size:17px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-shadow:0 1px 4px rgba(60,40,20,.12)}
+.map-zoom button:active{transform:scale(.94)}
+.map-zoom i{display:block;line-height:1}
 .pin{position:absolute;transform:translate(-11px,-11px);display:flex;align-items:center;gap:4px;padding:0;border:0;background:none;cursor:pointer;font:inherit;white-space:nowrap}
 .pin b{flex:none;width:22px;height:22px;border-radius:50%;background:var(--c-fg);color:#fff;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);
   font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
@@ -513,7 +540,10 @@ input.sw:focus-visible{outline:2px solid var(--accent-bg);outline-offset:2px}
   <div class="tl" id="tl"></div>
   <div class="ov" id="ov" hidden></div>
   <div class="cand-page" id="cand" hidden></div>
-  <div class="map-view" id="mapView" hidden><div class="gmap" id="gmap"></div><div class="map-msg" id="mapMsg"></div></div>
+  <div class="map-view" id="mapView" hidden><div class="gmap" id="gmap"></div><div class="map-msg" id="mapMsg"></div>
+    <div class="map-cover" aria-hidden="true"></div>
+    <div class="map-strip" id="mapStrip"></div>
+    <div class="map-zoom"><button type="button" data-zoom="1" aria-label="放大"><i class="ti ti-plus"></i></button><button type="button" data-zoom="-1" aria-label="縮小"><i class="ti ti-minus"></i></button></div></div>
 </div>
 <button type="button" class="fab" id="fab" aria-label="新增行程"><i class="ti ti-plus"></i></button>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -1477,6 +1507,9 @@ const mapBtn = document.getElementById('mapBtn'), mapView = document.getElementB
 let mapMode = false;
 try { mapMode = sessionStorage.getItem('cm-map') === '1'; } catch {}
 const mapOn = page => mapMode && !editing && (isDay(page) || page === 'cand');
+mapView.querySelector('.map-zoom').addEventListener('click', e => {
+  const b = e.target.closest('[data-zoom]'); if (b && gmap) gmap.setZoom(gmap.getZoom() + +b.dataset.zoom);
+});
 mapBtn.addEventListener('click', () => {
   mapMode = !mapMode;
   try { sessionStorage.setItem('cm-map', mapMode ? '1' : ''); } catch {}
@@ -1514,12 +1547,42 @@ function mapPoints(page) {
   let n = 0;
   for (const it of items) {
     const cls = it.cls || 'eat';
-    if (it.group) for (const [i, x] of (it.stops || []).entries()) { const p = ll(x.loc); if (p) pts.push({ p, n: ++n, cls, name: x.name, id: it.id, kind: 'stop', idx: i }); }
-    else if (it.alts?.length) { const ps = it.alts.map((x, i) => ({ p: ll(x.loc), x, i })).filter(o => o.p); if (ps.length) { n++; ps.forEach(o => pts.push({ p: o.p, n, cls, name: o.x.name, id: it.id, kind: 'alt', idx: o.i, alt: true })); } }
-    else { const p = ll(it.loc); if (p) pts.push({ p, n: ++n, cls, name: it.t, id: it.id }); }
+    const sub = page === 'cand' ? '' : T(it.s);
+    if (it.group) for (const [i, x] of (it.stops || []).entries()) { const p = ll(x.loc); if (p) pts.push({ p, n: ++n, cls, name: x.name, id: it.id, kind: 'stop', idx: i, when: page === 'cand' ? '' : T(x.s), desc: x.desc || it.t }); }
+    else if (it.alts?.length) { const ps = it.alts.map((x, i) => ({ p: ll(x.loc), x, i })).filter(o => o.p); if (ps.length) { n++; ps.forEach(o => pts.push({ p: o.p, n, cls, name: o.x.name, id: it.id, kind: 'alt', idx: o.i, alt: true, when: sub, desc: it.t })); } }
+    else { const p = ll(it.loc); if (p) pts.push({ p, n: ++n, cls, name: it.t, id: it.id, when: sub, desc: it.desc === PENDING ? '' : it.desc || '' }); }
   }
   return pts;
 }
+const mapStrip = document.getElementById('mapStrip');
+let mapPts = [], mapActive = -1, stripAuto = 0;
+const openPt = pt => pt.kind ? openSubInfo(pt.id, pt.kind, pt.idx) : openCardInfo(pt.id);
+// 選中第 i 個點：圖釘放大、卡片加框；pan＝地圖移過去，scroll＝卡片列捲到那張
+function mapFocus(i, { pan = true, scroll = true } = {}) {
+  if (!mapPts[i]) return;
+  mapActive = i;
+  mapPins.forEach((v, k) => v.el.classList.toggle('on', k === i));
+  mapStrip.querySelectorAll('.ms-card').forEach((c, k) => c.classList.toggle('on', k === i));
+  if (pan && gmap) { if (gmap.getZoom() < 15) gmap.setZoom(15); gmap.panTo(mapPts[i].p); }   // 拉得太遠時順便放大到看得清楚那一區
+  if (scroll) { const c = mapStrip.children[i]; if (c) { stripAuto = Date.now(); mapStrip.scrollTo({ left: c.offsetLeft - (mapStrip.clientWidth - c.offsetWidth) / 2, behavior: 'smooth' }); } }
+}
+mapStrip.addEventListener('click', e => {
+  const c = e.target.closest('.ms-card'); if (!c) return;
+  const i = +c.dataset.i;
+  if (i === mapActive) openPt(mapPts[i]); else mapFocus(i);
+});
+// 用手指滑卡片列：停下來時中間那張就是選中的，地圖跟著移過去
+let stripTimer = 0;
+mapStrip.addEventListener('scroll', () => {
+  clearTimeout(stripTimer);
+  stripTimer = setTimeout(() => {
+    if (Date.now() - stripAuto < 600) return;   // 程式自己捲的，不用再處理
+    const mid = mapStrip.scrollLeft + mapStrip.clientWidth / 2;
+    let best = -1, d = Infinity;
+    [...mapStrip.children].forEach((c, k) => { const x = Math.abs(c.offsetLeft + c.offsetWidth / 2 - mid); if (x < d) { d = x; best = k; } });
+    if (best >= 0 && best !== mapActive) mapFocus(best, { scroll: false });
+  }, 140);
+}, { passive: true });
 async function drawMap(page) {
   document.documentElement.style.setProperty('--hd', document.querySelector('header').offsetHeight + 'px');
   const pts = mapPoints(page), day = isDay(page);
@@ -1535,21 +1598,27 @@ async function drawMap(page) {
   };
   if (!gmap) {
     gmap = new google.maps.Map(document.getElementById('gmap'), {
-      center: { lat: 18.7883, lng: 98.9853 }, zoom: 14, styles: MAP_STYLE, disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy', clickableIcons: false });
+      center: { lat: 18.7883, lng: 98.9853 }, zoom: 14, styles: MAP_STYLE, disableDefaultUI: true, gestureHandling: 'greedy', clickableIcons: false, keyboardShortcuts: false });
     const far = () => mapView.classList.toggle('far', gmap.getZoom() < 16);
     gmap.addListener('zoom_changed', far); gmap.addListener('idle', far);
   }
   mapPins.forEach(p => p.setMap(null)); mapPins = [];
   if (mapLine) { mapLine.setMap(null); mapLine = null; }
+  mapStrip.innerHTML = ''; mapView.classList.remove('has-strip'); mapPts = pts; mapActive = -1;
   if (!pts.length) { mapMsg.textContent = day ? '這一天還沒有標上位置的地點' : '備選還沒有標上位置的地點'; gmap.setCenter({ lat: 18.7883, lng: 98.9853 }); gmap.setZoom(13); return; }
   for (const pt of pts) {
     const el = document.createElement('button');
     el.type = 'button'; el.className = `pin ${pt.cls}${pt.alt ? ' alt' : ''}`;
     el.innerHTML = `<b>${day ? pt.n : ''}</b><span>${esc(shortName(pt.name))}</span>`;
     el.setAttribute('aria-label', pt.name);
-    el.addEventListener('click', e => { e.stopPropagation(); pt.kind ? openSubInfo(pt.id, pt.kind, pt.idx) : openCardInfo(pt.id); });
+    const i = mapPins.length;
+    el.addEventListener('click', e => { e.stopPropagation(); mapFocus(i, { pan: false, scroll: true }); openPt(pt); });
     const v = new PinView(pt, el); v.setMap(gmap); mapPins.push(v);
   }
+  // 底部卡片列：一個點一張；點一下移到那裡，再點一次（或點已經選中的）看資訊
+  mapStrip.innerHTML = pts.map((pt, i) => `<button type="button" class="ms-card ${pt.cls}${pt.alt ? ' alt' : ''}${day ? '' : ' nonum'}" data-i="${i}">
+    <b>${day ? pt.n : ''}</b><span class="ms-txt"><div>${esc(pt.name)}</div><span>${esc([pt.when, pt.desc].filter(Boolean).join(' · ') || ' ')}</span></span></button>`).join('');
+  mapView.classList.add('has-strip'); stripAuto = Date.now(); mapStrip.scrollLeft = 0;
   // 每天：照順序用線連起來（多選一的幾家不連，到時候才決定去哪一家）
   if (day) {
     const path = pts.filter(p => !p.alt).map(p => p.p);
