@@ -178,6 +178,8 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
   background:#fff;border-radius:18px 18px 0 0;padding:8px 18px calc(24px + env(safe-area-inset-bottom));
   transform:translateY(100%);transition:transform .25s ease;overscroll-behavior:contain}
 .sheet.on{transform:none}
+/* 關起來的面板滑到畫面外之後整個藏起來：iPhone Safari 底部半透明的網址列會透出藏在下面的白色面板 */
+.sheet:not(.on){visibility:hidden;transition:transform .25s ease,opacity .18s ease,visibility 0s .25s}
 /* 面板打開時把頁面固定住、只留一個畫面高：iPhone 彈出鍵盤時就推不出下面的行程，露出來的只會是白色 */
 html.sheet-lock{background:#fff}
 html.sheet-lock body{position:fixed;left:0;right:0;bottom:0;overflow:hidden}
@@ -185,6 +187,7 @@ html.sheet-lock body{position:fixed;left:0;right:0;bottom:0;overflow:hidden}
 .sheet.dlg{left:16px;right:16px;bottom:auto;top:0;max-height:none;border-radius:18px;padding:18px 18px 0;
   transform:scale(.96);opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease}
 .sheet.dlg.on{transform:none;opacity:1;pointer-events:auto}
+.sheet.dlg:not(.on){transition:opacity .18s ease,transform .18s ease,visibility 0s .18s}
 .sheet.dlg .grab{display:none}
 .sheet.dlg .ed-actions{position:static;margin-top:18px;padding:12px 18px 16px;border-radius:0 0 18px 18px}
 /* 拉桿：固定在面板最上面，內容往上捲時不會跟著捲走；整條白色橫條都可以按著往下拉 */
@@ -247,6 +250,26 @@ html.sheet-lock body{position:fixed;left:0;right:0;bottom:0;overflow:hidden}
   color:var(--text2);font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .edit-btn i{display:block;line-height:1}
 .editing .edit-btn{display:none}
+/* ---------- 地圖 ---------- */
+.map-btn{position:absolute;left:16px;bottom:10px;width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:#fff;
+  color:var(--text2);font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.map-btn i{display:block;line-height:1}
+.map-btn[hidden],.editing .map-btn{display:none}
+.map-view{position:relative;height:calc(100dvh - var(--hd, 160px));min-height:320px;background:#F3EFE8}
+.map-view .gmap{position:absolute;inset:0}
+/* 地圖模式：網頁背景換成地圖底色，iPhone 底部半透明網址列後面露出來的是米色，跟地圖連成一片 */
+html.on-map:not(.sheet-lock),html.on-map:not(.sheet-lock) body{background:#f4f0e9}   /* 打開資訊面板時是白色，跟面板一樣 */
+.map-msg{position:absolute;left:16px;right:16px;top:16px;z-index:2;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.94);
+  box-shadow:0 2px 10px rgba(60,40,20,.12);font-size:13px;color:var(--text2);text-align:center}
+.map-msg:empty{display:none}
+.pin{position:absolute;transform:translate(-11px,-11px);display:flex;align-items:center;gap:4px;padding:0;border:0;background:none;cursor:pointer;font:inherit;white-space:nowrap}
+.pin b{flex:none;width:22px;height:22px;border-radius:50%;background:var(--c-fg);color:#fff;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);
+  font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.pin.alt b{border-style:dashed;border-color:var(--c-fg);background:#fff;color:var(--c-fg)}
+.pin span{max-width:110px;overflow:hidden;text-overflow:ellipsis;padding:1px 6px;border-radius:6px;background:rgba(255,255,255,.92);color:var(--text);
+  font-size:11px;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.pin.dim{opacity:.45}
+.map-view.far .pin span{display:none}   /* 拉遠時只留編號圓點，店名才不會疊在一起 */
 /* 編輯列蓋掉天數列，高度跟天數列一樣（30px），進出編輯時頁首不會跳動 */
 .editbar{display:none;align-items:center;gap:6px;height:30px;margin:0 0 10px;padding:0;background:none;color:var(--accent-fg);font-size:13px;font-weight:600}
 .editing .editbar{display:flex}
@@ -484,11 +507,13 @@ input.sw:focus-visible{outline:2px solid var(--accent-bg);outline-offset:2px}
     </div></nav>
     <div class="day-title" id="dayTitle"></div>
     <div class="day-sub" id="daySub"></div>
+    <button type="button" class="map-btn" id="mapBtn" aria-label="看地圖" hidden><i class="ti ti-map"></i></button>
     <button type="button" class="edit-btn" id="editBtn" aria-label="編輯行程"><i class="ti ti-pencil"></i></button>
   </header>
   <div class="tl" id="tl"></div>
   <div class="ov" id="ov" hidden></div>
   <div class="cand-page" id="cand" hidden></div>
+  <div class="map-view" id="mapView" hidden><div class="gmap" id="gmap"></div><div class="map-msg" id="mapMsg"></div></div>
 </div>
 <button type="button" class="fab" id="fab" aria-label="新增行程"><i class="ti ti-plus"></i></button>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -526,7 +551,8 @@ const TYPES = [['eat', '吃'], ['spa', '按摩'], ['cafe', '咖啡'], ['bar', '�
 
 // 筆記資料（從試算表的 Notes 分頁載入）：orig＝原文名稱，points＝重點整理，links＝參考連結
 let NOTES = {};
-let CHECKS = [];   // 總覽頁的待辦（kind＝todo）和注意事項（kind＝tip）
+let CHECKS = [];
+let MAPS_KEY = '';   // 網頁地圖的金鑰（Settings 的 MAPS_KEY，只限這個網站使用）   // 總覽頁的待辦（kind＝todo）和注意事項（kind＝tip）
 // 有重點或連結才算有筆記（只有原文名稱的不出現筆記按鈕）
 const richNote = k => { const n = NOTES[k]; return n && (n.points || n.links || n.full || n.photo) ? n : null; };
 
@@ -565,12 +591,12 @@ let noteQueue = {}, noteOld = {};
 try {
   const c = JSON.parse(localStorage.getItem(CACHE_KEY));
   if (c && c.data) {
-    DATA = c.data; BASE = c.base; NOTES = c.notes || {}; CHECKS = c.checks || []; loaded = true; resumeDraft = c.draft || null;
+    DATA = c.data; BASE = c.base; NOTES = c.notes || {}; CHECKS = c.checks || []; MAPS_KEY = c.mapsKey || ''; loaded = true; resumeDraft = c.draft || null;
     DATA.cand = DATA.cand || [];
     noteQueue = c.noteQueue || {}; noteOld = c.noteOld || {};
   }
 } catch {}
-function cache() { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data: DATA, base: BASE, notes: NOTES, checks: CHECKS, draft: editStart, noteQueue, noteOld })); } catch {} }
+function cache() { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data: DATA, base: BASE, notes: NOTES, checks: CHECKS, mapsKey: MAPS_KEY, draft: editStart, noteQueue, noteOld })); } catch {} }
 
 const getAuth = () => { try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch { return null; } };
 const setAuth = a => { try { a ? localStorage.setItem(AUTH_KEY, JSON.stringify(a)) : localStorage.removeItem(AUTH_KEY); } catch {} };
@@ -610,6 +636,7 @@ function applyServer(r) {
                  full: n.full || undefined, photo: n.photo || undefined };
   }
   CHECKS = r.checklist || [];
+  MAPS_KEY = r.mapsKey || '';
   loaded = true; loadErr = false; cache();
 }
 
@@ -1115,6 +1142,9 @@ function updateHeader(page) {
     daySub.textContent = page === 'cand' ? `備選景點．${(DATA.cand || []).length} 個` : page === 'overview' ? `${dayInfo('d1').date}–${dayInfo('d8').date}．${DAY_KEYS.length} 天 ${DAY_KEYS.length - 1} 夜` : PAGES[page].sub;
   }
   fab.classList.toggle('day', isDay(page) || page === 'cand');
+  mapBtn.hidden = !(isDay(page) || page === 'cand');
+  mapBtn.innerHTML = `<i class="ti ${mapMode ? 'ti-list' : 'ti-map'}"></i>`;
+  mapBtn.setAttribute('aria-label', mapMode ? '回到清單' : '看地圖');
   applyHeaderEditable();
   document.getElementById('ebDay').textContent = isDay(page) ? `第 ${dayNum(page)} 天` : page === 'cand' ? '備選' : '';
   document.querySelector('.tab.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
@@ -1129,6 +1159,11 @@ function renderPage(page) {
   computeRange();
   tl.innerHTML = ''; movable.length = 0; expanders.length = 0;
   tl.classList.remove('sliding');
+  // 地圖模式：時間軸、備選清單收起來，改顯示地圖
+  const onMap = mapOn(page);
+  mapView.hidden = !onMap;
+  document.documentElement.classList.toggle('on-map', onMap); syncTint();
+  if (onMap) { ovEl.hidden = candEl.hidden = true; tl.style.display = 'none'; cardsEl = curLayer = null; drawMap(page); return; }
   ovEl.hidden = page !== 'overview';
   if (page === 'overview') renderOverview();
   candEl.hidden = page !== 'cand';
@@ -1419,7 +1454,7 @@ function showPage(page, animate = true) {
   if (page === current) return;
   const prev = current; current = page;
   updateHeader(page);
-  if (animate && !reduceMotion && prev && isDay(prev) && isDay(page) && cardsEl && !busy) {
+  if (animate && !reduceMotion && prev && isDay(prev) && isDay(page) && cardsEl && !busy && !mapOn(page)) {
     slideTo(page, dayNum(page) > dayNum(prev) ? 1 : -1);
   } else {
     renderPage(page);
@@ -1435,6 +1470,95 @@ document.querySelector('.tabs').addEventListener('click', e => {
 });
 let skipAnim = false;
 addEventListener('hashchange', () => { showPage(location.hash.slice(1), !skipAnim); skipAnim = false; });
+
+// ---------- 地圖 ----------
+// 頁首左下角的按鈕切換「時間軸／清單」和「地圖」；每天的地圖照時間順序編號、用線連起來，備選的地圖只標類型顏色
+const mapBtn = document.getElementById('mapBtn'), mapView = document.getElementById('mapView'), mapMsg = document.getElementById('mapMsg');
+let mapMode = false;
+try { mapMode = sessionStorage.getItem('cm-map') === '1'; } catch {}
+const mapOn = page => mapMode && !editing && (isDay(page) || page === 'cand');
+mapBtn.addEventListener('click', () => {
+  mapMode = !mapMode;
+  try { sessionStorage.setItem('cm-map', mapMode ? '1' : ''); } catch {}
+  updateHeader(current); renderPage(current); scrollTo({ top: 0 });
+});
+let mapsReady = null, gmap = null, mapPins = [], mapLine = null, PinView = null;
+function loadMaps(key) {
+  if (mapsReady) return mapsReady;
+  mapsReady = new Promise((ok, bad) => {
+    window.__mapsReady = ok;
+    const sc = document.createElement('script');
+    sc.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly&language=zh-TW&region=TW&callback=__mapsReady`;
+    sc.async = true; sc.onerror = () => { mapsReady = null; bad(new Error('load')); };
+    document.head.appendChild(sc);
+  });
+  return mapsReady;
+}
+// 淡淡的大地色底圖；店家、公車站這類 Google 自己的標記拿掉，只留我們的圖釘
+const MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#f4f0e9' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#7d7268' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ visibility: 'on' }, { color: '#e2ebd8' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#f1dfcd' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#d5e3ea' }] },
+];
+// 地圖上要標的點：每天照時間排，一個地點一個編號（合併區塊每一站各一號，多選一的幾家同一號、虛線圈）
+function mapPoints(page) {
+  const pts = [], ll = s => { const [a, b] = String(s || '').split(',').map(Number); return isFinite(a) && isFinite(b) && (a || b) ? { lat: a, lng: b } : null; };
+  const items = [...(DATA[page] || [])].sort((a, b) => m(a.s) - m(b.s));
+  let n = 0;
+  for (const it of items) {
+    const cls = it.cls || 'eat';
+    if (it.group) for (const [i, x] of (it.stops || []).entries()) { const p = ll(x.loc); if (p) pts.push({ p, n: ++n, cls, name: x.name, id: it.id, kind: 'stop', idx: i }); }
+    else if (it.alts?.length) { const ps = it.alts.map((x, i) => ({ p: ll(x.loc), x, i })).filter(o => o.p); if (ps.length) { n++; ps.forEach(o => pts.push({ p: o.p, n, cls, name: o.x.name, id: it.id, kind: 'alt', idx: o.i, alt: true })); } }
+    else { const p = ll(it.loc); if (p) pts.push({ p, n: ++n, cls, name: it.t, id: it.id }); }
+  }
+  return pts;
+}
+async function drawMap(page) {
+  document.documentElement.style.setProperty('--hd', document.querySelector('header').offsetHeight + 'px');
+  const pts = mapPoints(page), day = isDay(page);
+  if (!MAPS_KEY) { mapMsg.textContent = '地圖還沒設定好：試算表 Settings 分頁要加上 MAPS_KEY'; return; }
+  mapMsg.textContent = '';
+  try { await loadMaps(MAPS_KEY); } catch { mapMsg.textContent = '地圖載入失敗，請檢查網路後再試一次'; return; }
+  if (!mapOn(current) || current !== page) return;   // 等地圖載入的時候換頁了
+  if (!PinView) PinView = class extends google.maps.OverlayView {
+    constructor(pt, el) { super(); this.pt = pt; this.el = el; }
+    onAdd() { this.getPanes().overlayMouseTarget.appendChild(this.el); google.maps.OverlayView.preventMapHitsAndGesturesFrom(this.el); }
+    draw() { const q = this.getProjection().fromLatLngToDivPixel(new google.maps.LatLng(this.pt.p)); if (q) { this.el.style.left = q.x + 'px'; this.el.style.top = q.y + 'px'; } }
+    onRemove() { this.el.remove(); }
+  };
+  if (!gmap) {
+    gmap = new google.maps.Map(document.getElementById('gmap'), {
+      center: { lat: 18.7883, lng: 98.9853 }, zoom: 14, styles: MAP_STYLE, disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy', clickableIcons: false });
+    const far = () => mapView.classList.toggle('far', gmap.getZoom() < 16);
+    gmap.addListener('zoom_changed', far); gmap.addListener('idle', far);
+  }
+  mapPins.forEach(p => p.setMap(null)); mapPins = [];
+  if (mapLine) { mapLine.setMap(null); mapLine = null; }
+  if (!pts.length) { mapMsg.textContent = day ? '這一天還沒有標上位置的地點' : '備選還沒有標上位置的地點'; gmap.setCenter({ lat: 18.7883, lng: 98.9853 }); gmap.setZoom(13); return; }
+  for (const pt of pts) {
+    const el = document.createElement('button');
+    el.type = 'button'; el.className = `pin ${pt.cls}${pt.alt ? ' alt' : ''}`;
+    el.innerHTML = `<b>${day ? pt.n : ''}</b><span>${esc(shortName(pt.name))}</span>`;
+    el.setAttribute('aria-label', pt.name);
+    el.addEventListener('click', e => { e.stopPropagation(); pt.kind ? openSubInfo(pt.id, pt.kind, pt.idx) : openCardInfo(pt.id); });
+    const v = new PinView(pt, el); v.setMap(gmap); mapPins.push(v);
+  }
+  // 每天：照順序用線連起來（多選一的幾家不連，到時候才決定去哪一家）
+  if (day) {
+    const path = pts.filter(p => !p.alt).map(p => p.p);
+    if (path.length > 1) mapLine = new google.maps.Polyline({ path, map: gmap, strokeColor: '#9A4A25', strokeOpacity: 0.45, strokeWeight: 2.5, clickable: false });
+  }
+  const b = new google.maps.LatLngBounds(); pts.forEach(p => b.extend(p.p));
+  if (pts.length === 1) { gmap.setCenter(pts[0].p); gmap.setZoom(15); }
+  else gmap.fitBounds(b, { top: 40, bottom: 40, left: 30, right: 60 });
+}
 
 // ---------- 手指左右滑換天（編輯模式下關閉） ----------
 let sw = null;
@@ -1577,12 +1701,19 @@ function placeDialog() {
 // 正在面板裡打字（鍵盤開著）：游標在面板的輸入框裡
 const kbOpen = () => { const a = document.activeElement; return !!a && sheet.contains(a) && a.matches('input[type=text], input[type=password], input:not([type]), textarea'); };
 if (window.visualViewport) { visualViewport.addEventListener('resize', placeDialog); visualViewport.addEventListener('scroll', placeDialog); }
+// iPhone Safari 底部網址列附近的顏色跟著網頁的主題顏色：看地圖時是地圖的米色，打開面板時是白色
+const tintMeta = document.querySelector('meta[name="theme-color"]');
+function syncTint() {
+  const c = document.documentElement.classList.contains('on-map') && !sheet.classList.contains('on') ? '#f4f0e9' : '#ffffff';
+  if (tintMeta && tintMeta.content !== c) tintMeta.content = c;
+}
 // 固定頁面時記住捲到哪裡，關掉面板再捲回來
 let lockY = null;
 function lockPage(on) {
   const root = document.documentElement;
   if (on && lockY === null) { lockY = scrollY; document.body.style.top = -lockY + 'px'; root.classList.add('sheet-lock'); }
   else if (!on && lockY !== null) { root.classList.remove('sheet-lock'); document.body.style.top = ''; scrollTo(0, lockY); lockY = null; }
+  syncTint();
 }
 // 頁面固定住時，iPhone 彈出鍵盤會把畫面往上推；鍵盤收起後畫面回來了，點擊的位置卻還是偏的（點上面勾到下面）
 // 鍵盤收起（離開輸入框、可見範圍變回來）就把被推走的捲動歸零，畫面和點擊位置重新對齊
