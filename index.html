@@ -323,6 +323,36 @@ html.on-map:not(.sheet-lock),html.on-map:not(.sheet-lock) body{background:#f4f0e
 .eb-label{flex:1}
 .eb-btn{height:26px;padding:0 12px;border-radius:999px;border:0;background:var(--accent-bg);color:var(--accent-fg);font-size:13px;font-weight:600;cursor:pointer}
 .eb-btn.done{background:var(--accent-fg);color:#fff}
+.eb-btn.ic{padding:0 9px;font-size:15px;line-height:26px}
+.car.stale{opacity:.5}
+.car .q{margin-left:2px;font-weight:600}
+.rt-list{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.rt-row{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line);font-size:13px;line-height:1.45}
+.rt-row:last-child{border-bottom:0}
+.rt-row input{flex:none;width:18px;height:18px;accent-color:var(--accent-fg)}
+.rt-row .rt-main{flex:1;min-width:0}
+.rt-main>span{display:block}
+.rt-row .rt-names{color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rt-row .rt-val{font-weight:600}
+.rt-row .rt-val s{color:var(--muted);font-weight:400;margin-right:4px}
+.rt-row .rt-sub{font-size:12px;color:var(--muted)}
+.rt-row.off{opacity:.55}
+.ed-travel{display:flex;gap:8px;align-items:center}
+.ed-travel .seg{flex:1;min-width:0}
+.ed-tmin{flex:none;display:flex;align-items:center;gap:4px;font-size:13px;color:var(--text2)}
+.sheet .ed-tmin input{width:58px;height:36px;padding:0 6px;text-align:center}
+.ed-travel-st{margin-top:6px;font-size:12px;color:var(--muted);line-height:1.5}
+.ed-travel-foot{display:flex;align-items:flex-start;gap:10px;margin-top:6px}
+.ed-travel-foot .ed-travel-st{flex:1;min-width:0;margin-top:2px}
+.ed-switch.sm{flex:none;margin:0;gap:6px;font-size:12px;color:var(--text2)}
+.ed-switch.sm input.sw{width:34px;height:20px;border-radius:10px}
+.ed-switch.sm input.sw::after{top:2px;left:2px;width:16px;height:16px}
+.ed-switch.sm input.sw:checked::after{transform:translateX(14px)}
+.ed-tfix{flex:1;display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:10px;background:#EFEBE5;font-size:14px;font-weight:600;color:var(--text)}   /* 手動填：只剩當時選的交通方式 */
+.seg.ed-modes .md-min{margin-left:4px}
+.seg.ed-modes .seg-thumb{width:calc((100% - 6px) / var(--n, 2));transform:translateX(calc(var(--i, 0) * 100%))}   /* 交通方式的數量不固定 */
+.seg.ed-modes button{display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.seg.ed-modes button[disabled]{opacity:.4}
 .eb-st{font-weight:400;color:var(--text2)}
 .eb-st.err{border:0;background:none;padding:0;font:inherit;font-weight:600;color:#C2412D;cursor:pointer}
 .tl-msg{position:absolute;left:52px;right:0;top:40px;text-align:center;font-size:14px;color:var(--muted);z-index:5}
@@ -481,6 +511,15 @@ html.on-map:not(.sheet-lock),html.on-map:not(.sheet-lock) body{background:#f4f0e
 .spin{display:inline-block;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .chips.sm .chip{height:30px;padding:0 4px;font-size:13px;flex:1 1 0;min-width:0}   /* 每個長度標籤一樣寬，平均排滿一行 */
+#edCls .chip,#sbCls .chip{flex:none;height:30px;padding:0 12px;font-size:13px}   /* 類型標籤跟日期、長度標籤一樣大 */
+/* 類型標籤維持一行：排不下就左右滑，還能滑的那一側邊緣淡出（之後類型會變多） */
+#edCls,#sbCls,#edDay{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;--fl:0px;--fr:0px;
+  -webkit-mask-image:linear-gradient(to right,transparent 0,#000 var(--fl),#000 calc(100% - var(--fr)),transparent 100%);
+          mask-image:linear-gradient(to right,transparent 0,#000 var(--fl),#000 calc(100% - var(--fr)),transparent 100%)}
+#edCls::-webkit-scrollbar,#sbCls::-webkit-scrollbar,#edDay::-webkit-scrollbar{display:none}
+#edCls.fade-l,#sbCls.fade-l,#edDay.fade-l{--fl:24px}
+#edCls.fade-r,#sbCls.fade-r,#edDay.fade-r{--fr:24px}
+#edDay .chip{flex:1 0 auto;min-width:30px;padding:0 6px}   /* 天數少：平均排滿一行；天數多到放不下：不再縮小，改成左右滑 */
 .chips.sm.day-chips .chip{white-space:nowrap}
 .btn.cand-open{width:100%;justify-content:flex-start;gap:8px;margin-top:16px}   /* 跟其他欄位一樣隔 16px */
 .cand-open .cnt{margin-left:auto;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--accent-bg,#f3e6dc)}
@@ -550,7 +589,7 @@ input.sw:focus-visible{outline:2px solid var(--accent-bg);outline-offset:2px}
 <div class="app">
   <header>
     <div class="editbar"><span class="eb-label"><i class="ti ti-pencil"></i> <span id="ebDay"></span>編輯中 · <span id="ebSt" class="eb-st">點空白處新增</span></span>
-      <button type="button" class="eb-btn" id="editCancel">取消</button><button type="button" class="eb-btn done" id="editDone">完成</button></div>
+      <button type="button" class="eb-btn ic" id="ebRoute" aria-label="計算這天的交通時間"><i class="ti ti-route"></i></button><button type="button" class="eb-btn" id="editCancel">取消</button><button type="button" class="eb-btn done" id="editDone">完成</button></div>
     <nav class="tabs"><div class="tabs-in">
       <button class="tab" data-page="overview">總覽</button><button class="tab day" data-page="d1" aria-label="第 1 天">1</button><button class="tab day" data-page="d2" aria-label="第 2 天">2</button>
       <button class="tab day" data-page="d3" aria-label="第 3 天">3</button><button class="tab day" data-page="d4" aria-label="第 4 天">4</button><button class="tab day" data-page="d5" aria-label="第 5 天">5</button>
@@ -697,7 +736,7 @@ function applyServer(r) {
 }
 
 // 比較內容時：空字串、false、空清單都當成「沒有」
-const ITEM_KEYS = ['s', 'e', 'cls', 't', 'desc', 'hours', 'map', 'loc', 'pid', 'orig', 'area', 'short', 'travel', 'booked', 'alert', 'mine', 'note', 'group', 'stops', 'alts'];
+const ITEM_KEYS = ['s', 'e', 'cls', 't', 'desc', 'hours', 'map', 'loc', 'pid', 'orig', 'area', 'short', 'travel', 'troute', 'booked', 'alert', 'mine', 'note', 'group', 'stops', 'alts'];
 const SUB_KEYS = ['s', 'dur', 'name', 'short', 'orig', 'area', 'desc', 'cls', 'hours', 'alert', 'map', 'loc', 'pid', 'mine', 'note'];
 const isEmpty = v => v === '' || v == null || v === false;
 // 一家店的資料：不管是一張卡片、合併區塊的一站、還是多選一的選項都一樣，互相轉換時整份帶著走
@@ -714,6 +753,21 @@ function placeOf(x, cls) {
 // 店家資料做成一張獨立的卡片（extra：時間等卡片才有的欄位）
 const cardOf = (p, extra) => { const { name, ...rest } = p;
   return { id: uid(), t: name, desc: '', cls: 'other', map: '', loc: '', pid: '', travel: '', booked: false, alert: '', mine: '', note: '', ...rest, ...extra }; };
+// ---------- 交通時間 ----------
+// 一段＝上一張卡片的最後一個地點 → 這一張的第一個地點（多選一用第一個選項）
+const firstLoc = it => it.group ? it.stops?.[0]?.loc : it.alts?.length ? it.alts[0].loc : it.loc;
+const lastLoc = it => it.group ? it.stops?.[it.stops.length - 1]?.loc : it.alts?.length ? it.alts[0].loc : it.loc;
+const routeKey = (prev, it) => { const a = prev && lastLoc(prev), b = it && firstLoc(it); return a && b ? `${a}>${b}` : ''; };
+// troute：「auto 或 manual｜drive 或 walk｜算的時候的起點>終點」，座標變了（換店、搬動）就看得出這個時間可能不準
+const parseRoute = r => { const [src = '', mode = 'drive', key = ''] = String(r || '').split('|'); return { src, mode, key }; };
+const routeStale = (prev, it) => { const r = parseRoute(it.troute); return !!r.key && r.key !== routeKey(prev, it); };
+// 同一天排在它前面的那張（開始時間比它早；editing 的卡片用面板上的開始時間）
+const prevOf = (day, id, start) => [...(DATA[day] || [])].filter(x => x.id !== id && m(x.s) < start).sort((a, b) => m(a.s) - m(b.s) || m(a.e) - m(b.e)).pop() || null;
+// 交通方式：名稱、圖示（之後要加機車、大眾運輸，在這裡和 Code.gs 的 ROUTE_MODES 各加一項）
+const ROUTE_MODES = { drive: ['開車', 'car'], walk: ['步行', 'walk'] };
+const modeName = k => (ROUTE_MODES[k] || ROUTE_MODES.drive)[0], modeIcon = k => (ROUTE_MODES[k] || ROUTE_MODES.drive)[1];
+const routeText = r => r.min ? `${r.min} 分` : '';
+const routeDesc = r => r.error ? r.error : `${modeName(r.mode)} ${r.min ? `${r.min} 分` : '不用移動'}・${r.m >= 1000 ? `${(r.m / 1000).toFixed(1)} 公里` : `${r.m} 公尺`}`;
 // 舊資料（手機裡存的）：選項的 info 改叫 alert
 function fixAlts() { for (const k of ALL_KEYS) for (const it of DATA[k] || []) for (const a of it.alts || []) if ('info' in a) { if (!a.alert && a.info) a.alert = a.info; delete a.info; } }
 const canonSub = x => { const o = {}; SUB_KEYS.forEach(k => { if (!isEmpty(x[k])) o[k] = k === 'dur' ? +x[k] : x[k]; }); return o; };
@@ -1135,9 +1189,11 @@ function renderCards(items) {
   items.forEach((it, i) => {
     const prev = items[i - 1];
     if (it.travel && prev) {
-      // 交通時間放在上一張結尾與這一張開頭的正中間，空隙太小就不顯示
-      const gap = y(it.s) - (y(prev.e) - 3);
-      if (gap >= 14) place(div('car', `<i class="ti ti-car"></i> ${esc(it.travel)}`), Math.round(y(prev.e) - 3 + gap / 2 - 8));
+      // 交通時間放在上一張結尾與這一張開頭的正中間，空隙太小就不顯示；前後地點變了（換店、搬動）就變淡加問號
+      const gap = y(it.s) - (y(prev.e) - 3), stale = routeStale(prev, it);
+      const el = div('car' + (stale ? ' stale' : ''), `<i class="ti ti-${modeIcon(parseRoute(it.troute).mode)}"></i> ${esc(it.travel)}${stale ? '<span class="q">?</span>' : ''}`);
+      if (stale) el.title = '前後的地點變了，這個時間可能不準，可以重新計算';
+      if (gap >= 14) place(el, Math.round(y(prev.e) - 3 + gap / 2 - 8));
     }
     const top = y(it.s), mins = m(it.e) - m(it.s), h = Math.max(mins * PX - 3, 28);
     const extra = clash.has(it.id) ? ' clash' : '';
@@ -1218,6 +1274,7 @@ function updateHeader(page) {
   mapBtn.innerHTML = `<i class="ti ${mapMode ? 'ti-list' : 'ti-map'}"></i>`;
   mapBtn.setAttribute('aria-label', mapMode ? '回到清單' : '看地圖');
   applyHeaderEditable();
+  document.getElementById('ebRoute').hidden = !isDay(page);
   document.getElementById('ebDay').textContent = isDay(page) ? `第 ${dayNum(page)} 天` : page === 'cand' ? '備選' : '';
   document.querySelector('.tab.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
   updateTabFade();
@@ -2284,6 +2341,7 @@ function swapItems(idA, idB) {
   move(late, lateNewS);
   move(early, earlyNewE - dE);
   [early.travel, late.travel] = [late.travel, early.travel];   // 交通時間屬於「時段」，跟著位置走
+  [early.troute, late.troute] = [late.troute, early.troute];
   saveData('交換'); renderPage(current);
   toast(`已交換「${snapshot[0].t}」和「${snapshot[1].t}」`, '復原', () => {
     for (const o of snapshot) { const it = DATA[current].find(x => x.id === o.id); if (it) Object.assign(it, o); }
@@ -2409,6 +2467,14 @@ const typeChips = (list, sel, cls) => {
 const candDropHtml = cands => `
   <button type="button" class="btn ghost cand-open" aria-expanded="false"><i class="ti ti-list-search"></i> 從備選清單挑選<span class="cnt">${cands.length}</span><i class="ti ti-chevron-down cand-chev"></i></button>
   ${candListHtml(cands)}`;
+// 可以左右滑的標籤列：還能往哪邊滑，那一側就淡出；一打開先把選中的那顆捲到看得見
+function chipScroller(row) {
+  if (!row) return;
+  const fade = () => { const max = row.scrollWidth - row.clientWidth; row.classList.toggle('fade-l', row.scrollLeft > 2); row.classList.toggle('fade-r', row.scrollLeft < max - 2); };
+  const on = row.querySelector('.chip.on');
+  if (on && on.offsetLeft + on.offsetWidth > row.clientWidth) row.scrollLeft = on.offsetLeft - (row.clientWidth - on.offsetWidth) / 2;
+  row.addEventListener('scroll', fade, { passive: true }); fade();
+}
 // 從備選替換：第一次打開清單時，類型標籤先停在被換掉那一家的類型（沒有這個類型的備選就維持「全部」）
 function presetType(wrap, cls) {
   const c = wrap.querySelector(`.cp-filter .chip[data-v="${cls}"]`);
@@ -2458,6 +2524,7 @@ function openEditor(id, startAt, toDay, replaceId) {
   // 從備選替換：時段沿用被換掉的那張（開始、結束都一樣），交通時間不沿用（路線變了）
   const old = replaceId ? findItem(replaceId)[1] : null;
   if (old) Object.assign(ed, { replaceId, oldT: old.t, s: old.s, dur: m(old.e) - m(old.s), travel: '' });
+  ed.troute = ed.fromCand ? '' : it?.troute || '';
   // 一般的單一地點卡片（或正在替換中）可以從備選替換
   const swapFrom = old || (it && !toDay && !ed.group && !ed.pick && isDay(ed.day) ? it : null);
   const swaps = swapFrom ? (DATA.cand || []).filter(c => c.id !== id) : [];
@@ -2522,8 +2589,14 @@ function openEditor(id, startAt, toDay, replaceId) {
     <label class="ed-field"><span class="ed-lab">地圖 <span class="ed-lab-hint">貼上 Google 地圖的分享連結最準確</span></span>
       <span class="clr-wrap"><input id="edMap" type="text" value="${esc(ed.map)}" placeholder="貼上分享連結，或輸入店名" autocomplete="off" inputmode="url"><button type="button" class="clr-btn" aria-label="清除" tabindex="-1"><i class="ti ti-x"></i></button></span></label>
     <div class="map-status" id="edMapStatus"></div>`}
-    <label class="ed-field"><span class="ed-lab">交通時間（從上一站過來）</span>
-      <input id="edTravel" type="text" value="${esc(ed.travel)}" placeholder="例如：10 分" autocomplete="off"></label>
+    <div class="ed-field"><span class="ed-lab-row"><span class="ed-lab">交通時間（從上一站過來）</span>
+        ${isDay(ed.day) ? '<button type="button" class="swap-btn" id="edRoute"><i class="ti ti-route"></i> 自動計算</button>' : ''}</span>
+      <div class="ed-travel"><div class="seg ed-modes" id="edModes" style="--n:${Object.keys(ROUTE_MODES).length}"><span class="seg-thumb"></span>${Object.keys(ROUTE_MODES).map(k =>
+        `<button type="button" data-v="${k}"><i class="ti ti-${modeIcon(k)}"></i> ${modeName(k)}<span class="md-min"></span></button>`).join('')}</div>
+        <span class="ed-tfix" id="edTfix" hidden></span>
+        <span class="ed-tmin" id="edTminWrap" hidden><input id="edTmin" type="number" inputmode="numeric" min="0" max="600" aria-label="交通分鐘數"><span>分</span></span></div>
+      <div class="ed-travel-foot"><div class="ed-travel-st" id="edRouteSt"></div>
+        <label class="ed-switch sm"><input type="checkbox" class="sw" id="edTself"><span>手動填</span></label></div></div>
     ${ed.group ? '' : `
     <hr class="ed-sep">
     ${photoField('edPhoto', ed.noteKey)}
@@ -2542,6 +2615,7 @@ function openEditor(id, startAt, toDay, replaceId) {
 
 function wireEditor() {
   const $ = id => sheet.querySelector('#' + id);
+  chipScroller($('edCls')); chipScroller($('edDay'));
   const refresh = () => {
     const sMin = $('edS').value ? fromInput($('edS').value) : m(ed.s), eMin = sMin + ed.dur;
     $('edEnd').textContent = clock(eMin); $('edMid').hidden = eMin <= 24 * 60;
@@ -2630,6 +2704,69 @@ function wireEditor() {
   wirePhoto('edPhoto', ed.noteKey || $('edT').value.trim());
   $('edSave').addEventListener('click', saveEditor);
   $('edDel')?.addEventListener('click', deleteItem);
+  // 交通時間：Segmented Control 選中的那格＝這一段的交通方式，格子裡是分鐘數；下面一行說明怎麼來的
+  // ed.tsel：orig＝原本存的、calc＝按「計算」選的、manual＝自己填的
+  const routeSt = $('edRouteSt'), box = $('edModes'), self = () => ed.id ? findItem(ed.id)[1] : null;
+  const curPrev = () => prevOf(ed.day, ed.replaceId || ed.id, $('edS').value ? fromInput($('edS').value) : m(ed.s));
+  Object.assign(ed, { tmode: parseRoute(ed.troute).mode in ROUTE_MODES ? parseRoute(ed.troute).mode : 'drive', tval: ed.travel || '', tsel: 'orig', topts: null, tprev: '', tmsg: '' });
+  const origStale = !ed.isNew && !ed.fromCand && ed.travel && routeStale(curPrev(), self());
+  const drawTravel = () => {
+    const bs = [...box.querySelectorAll('button')];
+    bs.forEach(b => {
+      const k = b.dataset.v, o = ed.topts?.[k], on = k === ed.tmode;
+      b.classList.toggle('on', on);
+      b.disabled = !!o?.error;
+      b.querySelector('.md-min').textContent = on && ed.tsel !== 'calc' ? ed.tval : o ? (o.error ? '—' : `${o.min} 分`) : '';
+    });
+    // 手動填：上面只剩當時選的交通方式＋分鐘數
+    const manual = ed.tsel === 'manual';
+    box.hidden = manual; $('edTfix').hidden = !manual; $('edTself').checked = manual;
+    $('edTfix').innerHTML = `<i class="ti ti-${modeIcon(ed.tmode)}"></i> ${modeName(ed.tmode)}`;
+    box.style.setProperty('--i', bs.findIndex(b => b.dataset.v === ed.tmode));
+    const o = ed.topts?.[ed.tmode];
+    const msg = ed.tmsg || (ed.tsel === 'calc' && o ? `從「${ed.tprev}」${routeDesc(o)}`
+      : ed.tsel === 'manual' ? (ed.tval ? `手動填的${modeName(ed.tmode)}時間` : '填上分鐘數')
+      : !ed.tval ? '還沒有交通時間，可以自動計算或手動填'
+      : origStale ? '前後的地點變了，這個時間可能不準，可以重新自動計算'
+      : { auto: `之前自動計算的${modeName(ed.tmode)}時間`, manual: `手動填的${modeName(ed.tmode)}時間` }[parseRoute(ed.troute).src] || '原本填的時間，可以按自動計算更新');
+    routeSt.textContent = msg;
+    $('edTminWrap').hidden = !manual;
+  };
+  box.addEventListener('click', e => {
+    const b = e.target.closest('button:not([disabled])'); if (!b) return;
+    ed.tmode = b.dataset.v; ed.tmsg = '';
+    if (ed.tsel === 'calc' || (ed.tsel === 'orig' && ed.topts?.[ed.tmode])) { ed.tsel = 'calc'; ed.tval = routeText(ed.topts[ed.tmode]); }
+    else if (ed.tsel === 'orig') ed.tchanged = true;   // 只換方式、時間不變
+    drawTravel();
+  });
+  // 手動填：打開時記下原本的狀態，關掉就回到原本（算好的、或原本存的）
+  $('edTself').addEventListener('change', e => {
+    ed.tmsg = '';
+    if (e.target.checked) { ed.tback = { tsel: ed.tsel, tval: ed.tval }; ed.tsel = 'manual'; $('edTmin').value = parseInt(ed.tval, 10) || ''; drawTravel(); $('edTmin').focus(); }
+    else { Object.assign(ed, ed.tback || { tsel: 'orig', tval: ed.travel || '' }); if (ed.tsel === 'calc' && ed.topts?.[ed.tmode]) ed.tval = routeText(ed.topts[ed.tmode]); drawTravel(); }
+  });
+  $('edTmin').addEventListener('input', () => { const n = parseInt($('edTmin').value, 10); ed.tval = n > 0 ? `${n} 分` : ''; drawTravel(); });
+  const say = t => { ed.tmsg = t; drawTravel(); };
+  $('edRoute')?.addEventListener('click', async () => {
+    const prev = curPrev(), me = self();
+    if (!prev) return say('這是這天的第一個行程，沒有上一站');
+    if ($('edMap') && $('edMap').value.trim() !== ed.map) return say('地圖剛改過，先儲存，等座標補好再算');
+    const a = lastLoc(prev), b = me && firstLoc(me);
+    if (!a || !b) return say(`${!a ? `「${prev.t}」` : '這裡'}還沒有座標，沒辦法計算`);
+    const btn = $('edRoute'); btn.disabled = true; say(`計算從「${prev.t}」過來…`);
+    try {
+      // 每種方式都算；預設選自動判斷的那格（800 公尺內、走 12 分鐘以內算步行）
+      const r = (await api({ ...getAuth(), action: 'routeTimes', pairs: [{ a, b }], all: true }, 60000)).routes[0];
+      if (!sheet.contains(btn)) return;
+      if (r.error) return say('算不出來：' + r.error);
+      ed.topts = Object.fromEntries((r.options || [r]).map(o => [o.mode, o]));
+      Object.assign(ed, { tkey: `${a}>${b}`, tprev: prev.t, tsel: 'calc', tmsg: '', tmode: r.mode in ROUTE_MODES ? r.mode : 'drive' });   // 手動填開著的話，自動計算會把它關掉
+      ed.tval = routeText(ed.topts[ed.tmode] || r);
+      drawTravel();
+    } catch (e) { say('計算失敗：' + (e.message || '網路不穩')); }
+    finally { btn.disabled = false; }
+  });
+  drawTravel();
   refresh();
 }
 // 原本排在這張「後面」的行程（用原本的開始時間判斷）
@@ -2649,7 +2786,7 @@ function convertCard(id, to, snap) {
       const s = it.group ? m(x.s) : m(it.s), e = it.group ? m(x.s) + x.dur : +x.dur ? m(it.s) + +x.dur : m(it.e);
       const p = placeOf(x, it.cls);
       if (!p.alert && i === 0 && it.alert) p.alert = it.alert;   // 整張卡片的提醒給第一張
-      return cardOf(p, { s: hhmm(s), e: hhmm(Math.min(Math.max(e, s + 5), DAY_END)), travel: i === 0 ? it.travel || '' : '', booked: i === 0 && !!it.booked });
+      return cardOf(p, { s: hhmm(s), e: hhmm(Math.min(Math.max(e, s + 5), DAY_END)), travel: i === 0 ? it.travel || '' : '', troute: i === 0 ? it.troute || '' : '', booked: i === 0 && !!it.booked });
     });
     list.splice(list.indexOf(it), 1, ...cards);
     list.sort((a, b) => m(a.s) - m(b.s));
@@ -2705,7 +2842,12 @@ function saveEditor() {
   if (push && laterItems().some(x => m(x.e) + delta > DAY_END)) return timeErr('順延後有行程會超過凌晨 05:00，請調整一下');
   if (!ed.isNew && ed.booked && (hhmm(sMin) !== ed.orig.s || hhmm(eMin) !== ed.orig.e) &&
       !confirm('這是已訂位的行程，確定要改時間嗎？')) return;
-  const fields = { t, s: hhmm(sMin), e: hhmm(eMin), travel: $('edTravel').value.trim() };
+  const fields = { t, s: hhmm(sMin), e: hhmm(eMin), travel: ed.tval };
+  // 交通時間怎麼來的：按「計算」選的＝auto；自己填的、只換了方式的＝manual（記下當時的起點終點，地點變了一樣會提醒）
+  const nowKey = () => routeKey(prevOf(ed.day, ed.replaceId || ed.id, sMin), ed.id ? findItem(ed.id)[1] : null);
+  if (ed.tsel === 'calc') fields.troute = `auto|${ed.tmode}|${ed.tkey}`;
+  else if (ed.tsel === 'manual' || ed.tchanged) fields.troute = ed.tval ? `manual|${ed.tmode}|${ed.tsel === 'manual' ? nowKey() : parseRoute(ed.troute).key || nowKey()}` : '';
+  else if (ed.fromCand) fields.troute = '';
   if (!ed.group) Object.assign(fields, {
     cls: ed.cls, ...(ed.pick ? {} : { map: $('edMap').value.trim(), desc: $('edDesc').value.trim() }),
     ...(fullEl && (NOTES[noteKey] || photoTouched) ? { note: noteKey } : {}), booked: $('edBooked').checked,
@@ -3131,6 +3273,58 @@ function openDayPicker(id) {
   $('dpS').value = T(it.s);
   sheet.querySelector('.dp-day').click();
 }
+// 編輯模式上方的「交通」：把這天每一段都算一遍，列出「原本 → 新的」，勾選要套用的
+document.getElementById('ebRoute').addEventListener('click', () => { if (isDay(current)) openRoutePlanner(current); });
+async function openRoutePlanner(day) {
+  const items = [...DATA[day]].sort((a, b) => m(a.s) - m(b.s) || m(a.e) - m(b.e));
+  const segs = items.slice(1).map((it, i) => { const prev = items[i]; return { it, prev, a: lastLoc(prev), b: firstLoc(it) }; });
+  openSheet(`
+    <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">計算交通時間</div>
+      <div class="sh-sub">第 ${dayNum(day)} 天．800 公尺內算步行，其他算開車（不含塞車）</div></div>
+      <button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
+    ${segs.length ? `<div class="rt-list" id="rtList">${segs.map((g, i) => `
+      <label class="rt-row" data-i="${i}"><input type="checkbox" disabled>
+        <span class="rt-main"><span class="rt-names">${esc(shortName(g.prev.t))} → ${esc(shortName(g.it.t))}</span>
+          <span class="rt-val">${g.it.travel ? esc(g.it.travel) : '<span class="rt-sub">沒有填</span>'}</span>
+          <span class="rt-sub rt-st">${g.a && g.b ? '計算中…' : '缺座標，略過'}</span></span></label>`).join('')}</div>` : '<div class="ov-empty">這天只有一個行程，沒有交通要算</div>'}
+    <div class="ed-actions">
+      <button type="button" class="btn ghost ed-cancel">取消</button>
+      <button type="button" class="btn primary" id="rtGo" disabled>套用</button>
+    </div>`);
+  if (!segs.length) return;
+  const rows = [...sheet.querySelectorAll('.rt-row')], go = sheet.querySelector('#rtGo');
+  const count = () => { const n = rows.filter(r => r.querySelector('input:checked')).length; go.disabled = !n; go.textContent = n ? `套用 ${n} 段` : '套用'; };
+  sheet.querySelector('#rtList').addEventListener('change', count);
+  const todo = segs.map((g, i) => ({ g, i })).filter(x => x.g.a && x.g.b);
+  segs.forEach((g, i) => { if (!(g.a && g.b)) rows[i].classList.add('off'); });
+  let res = [];
+  try { res = todo.length ? (await api({ ...getAuth(), action: 'routeTimes', pairs: todo.map(x => ({ a: x.g.a, b: x.g.b })) }, 90000)).routes : []; }
+  catch (e) { if (sheet.contains(go)) todo.forEach(x => { rows[x.i].querySelector('.rt-st').textContent = '計算失敗：' + (e.message || '網路不穩'); }); return; }
+  if (!sheet.contains(go)) return;
+  todo.forEach((x, n) => {
+    const r = res[n] || { error: '沒有結果' }, row = rows[x.i], box = row.querySelector('input'), it = x.g.it;
+    x.g.r = r;
+    row.querySelector('.rt-st').textContent = routeDesc(r);
+    if (r.error) { row.classList.add('off'); return; }
+    const next = routeText(r), src = parseRoute(it.troute).src;
+    row.querySelector('.rt-val').innerHTML = (it.travel || '') === next ? `${esc(next || '不用移動')}<span class="rt-sub">　一樣</span>`
+      : `${it.travel ? `<s>${esc(it.travel)}</s>→ ` : ''}${esc(next || '不用移動')}`;
+    box.disabled = false;
+    box.checked = src !== 'manual' && ((it.travel || '') !== next || !it.troute);   // 自己手動填的預設不勾
+    if (src === 'manual') row.querySelector('.rt-st').textContent += '・手動填的';
+  });
+  count();
+  go.addEventListener('click', () => {
+    const snap = takeSnap();
+    let n = 0;
+    segs.forEach((g, i) => {
+      if (!rows[i].querySelector('input:checked') || !g.r || g.r.error) return;
+      g.it.travel = routeText(g.r); g.it.troute = `auto|${g.r.mode}|${g.a}>${g.b}`; n++;
+    });
+    saveData('計算交通'); closeSheet(); renderPage(current);
+    toast(`已更新 ${n} 段交通時間`, '復原', () => undoSnap(snap), UNDO_MS);
+  });
+}
 // 換天：從原本那天拿出來，放到新的那天（時間不變）
 function moveDay(id, from, to) {
   if (from === to) return;
@@ -3242,6 +3436,7 @@ function openSubEditor(cardId, kind, idx, fromCand, replace) {
     </div>`, isNew && !cands.length && !c ? '#sbName' : '.sh-close');
   wireCandDrop(sheet.querySelector('#sbCandWrap'), id => openSubEditor(cardId, kind, null, id));
   const $ = id => sheet.querySelector('#' + id);
+  chipScroller($('sbCls'));
   $('sbCls').addEventListener('click', e => {
     const b = e.target.closest('.chip'); if (!b) return;
     sed.cls = b.dataset.v; sheet.querySelectorAll('#sbCls .chip').forEach(x => x.classList.toggle('on', x === b));
