@@ -2409,6 +2409,13 @@ const typeChips = (list, sel, cls) => {
 const candDropHtml = cands => `
   <button type="button" class="btn ghost cand-open" aria-expanded="false"><i class="ti ti-list-search"></i> 從備選清單挑選<span class="cnt">${cands.length}</span><i class="ti ti-chevron-down cand-chev"></i></button>
   ${candListHtml(cands)}`;
+// 從備選替換：第一次打開清單時，類型標籤先停在被換掉那一家的類型（沒有這個類型的備選就維持「全部」）
+function presetType(wrap, cls) {
+  const c = wrap.querySelector(`.cp-filter .chip[data-v="${cls}"]`);
+  if (!c || wrap.dataset.preset) return;
+  wrap.dataset.preset = '1'; c.click();
+  const row = c.parentNode; row.scrollLeft = c.offsetLeft - (row.clientWidth - c.offsetWidth) / 2;   // 標籤列只橫向捲到看得見，不動面板
+}
 const candListHtml = cands => `
   <div class="cand-drop" hidden>
     ${cands.length > 5 ? typeChips(cands, '', 'cp-filter') : ''}
@@ -2591,6 +2598,7 @@ function wireEditor() {
     if (!b.classList.contains('open') && !ed.replaceId && ed.booked && !confirm('這是已訂位的行程，確定要換掉嗎？')) return;
     b.classList.toggle('open'); b.setAttribute('aria-expanded', b.classList.contains('open'));
     $('edSwapWrap').querySelector('.cand-drop').hidden = !b.classList.contains('open');
+    if (b.classList.contains('open')) presetType($('edSwapWrap'), ed.cls);
   });
   wireCandDrop($('edSwapWrap'), id => {
     if (sig() !== sig0 && !confirm('剛剛在這裡的修改不會保留，確定要換嗎？')) return;
@@ -3245,6 +3253,7 @@ function openSubEditor(cardId, kind, idx, fromCand, replace) {
     const b = $('sbSwapBtn'), on = !b.classList.contains('open');
     b.classList.toggle('open', on); b.setAttribute('aria-expanded', on);
     $('sbSwapWrap').querySelector('.cand-drop').hidden = !on;
+    if (on) presetType($('sbSwapWrap'), sed.cls);
   });
   wireCandDrop($('sbSwapWrap'), id => {
     if (sig() !== sig0 && !confirm('剛剛在這裡的修改不會保留，確定要換嗎？')) return;
