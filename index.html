@@ -636,7 +636,7 @@ let loaded = false, loadErr = false;  // 有沒有拿到過資料（雲端或手
 // 編輯是「草稿」：按「完成」才存到雲端，按「取消」就回到 editStart（進入編輯時的樣子）
 let editStart = null, resumeDraft = null;
 // 完整筆記是共用的（同一家店出現在好幾天也只有一份），改了先記在 noteQueue，跟卡片一起存；noteOld 是這次編輯前的樣子，按「取消」時還原
-let noteQueue = {}, noteOld = {};
+let noteQueue = {}, noteOld = {}, noteSeq = Date.now();
 try {
   const c = JSON.parse(localStorage.getItem(CACHE_KEY));
   if (c && c.data) {
@@ -725,7 +725,7 @@ function setNoteField(key, field, value) {
   if ((cur[field] || '') === value) return false;
   if (editing && !(key in noteOld)) noteOld[key] = NOTES[key] ? clone(NOTES[key]) : null;
   NOTES[key] = { ...cur, [field]: value || undefined };
-  noteQueue[key] = true;
+  noteQueue[key] = ++noteSeq;   // 每改一次換一個號碼：上傳途中又改了，就知道還要再存一次
   return true;
 }
 const setFullNote = (key, full) => setNoteField(key, 'full', full);
@@ -887,10 +887,10 @@ async function sync() {
   const label = nextLabel; nextLabel = '';
   try {
     if (noteKeys.length) {
-      const notes = {};
+      const notes = {}, sent = { ...noteQueue };
       noteKeys.forEach(k => { const n = NOTES[k] || {}; notes[k] = { orig: n.orig, points: n.points, links: n.links, full: n.full, photo: n.photo || '' }; });
       await api({ ...auth, action: 'saveNotes', notes });
-      noteKeys.forEach(k => delete noteQueue[k]);
+      noteKeys.forEach(k => { if (noteQueue[k] === sent[k]) delete noteQueue[k]; });   // 上傳途中又改過的（例如照片晚到）留著下一輪再存
     }
     if (ops.count > ops.notes) {
     // 所有修改合成一個請求送出，只要等一次
@@ -2619,7 +2619,7 @@ const UNDO_MS = 3000;
 const takeSnap = () => ({ data: Object.fromEntries(ALL_KEYS.map(k => [k, clone(DATA[k] || [])])), notes: clone(NOTES) });
 function undoSnap(snap) {
   ALL_KEYS.forEach(k => { DATA[k] = snap.data[k]; });
-  for (const [k, v] of Object.entries(snap.notes)) if (JSON.stringify(NOTES[k]) !== JSON.stringify(v)) { NOTES[k] = v; noteQueue[k] = true; }   // 筆記改回原本的樣子
+  for (const [k, v] of Object.entries(snap.notes)) if (JSON.stringify(NOTES[k]) !== JSON.stringify(v)) { NOTES[k] = v; noteQueue[k] = ++noteSeq; }   // 筆記改回原本的樣子
   saveData('復原'); renderPage(current); updateHeader(current); toast('已復原');
 }
 function saveEditor() {
