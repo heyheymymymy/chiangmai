@@ -69,6 +69,10 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .in-r{animation:inR .26s ease}
 .ov-sec{font-size:12px;font-weight:600;color:var(--muted);margin:22px 0 8px}
 .ov-sec:first-child{margin-top:0}
+/* 總覽分兩頁：每天（每天、這趟旅程、已訂位）／待辦清單（待辦、注意事項），用 Segmented Control 切換 */
+.seg.ov-seg{margin:0 0 18px}
+.ov-seg .seg-thumb{width:calc((100% - 6px) / 2)}
+.ov-seg + .ov-sec{margin-top:0}
 .ov-row{display:flex;align-items:flex-start;gap:10px;width:100%;padding:12px 0;border:0;border-top:1px solid var(--line);background:none;
   font:inherit;color:var(--text);text-align:left;cursor:pointer}
 .ov-row:first-of-type{border-top:0}
@@ -1436,6 +1440,9 @@ function shortName(t) {
   const m = t.match(/^([A-Za-z0-9][A-Za-z0-9.&'’ -]*?)\s+[\u4e00-\u9fff]/);
   return m ? m[1] : t;
 }
+// 總覽目前在哪一頁（每天／待辦清單），記在這支手機
+let ovTab = 'days';
+try { ovTab = localStorage.getItem('cm-ov-tab') === 'todo' ? 'todo' : 'days'; } catch {}
 function renderOverview() {
   const today = tripNow()?.day;
   const days = DAY_KEYS.map(k => ({ k, info: dayInfo(k), items: [...(DATA[k] || [])].sort((a, b) => m(a.s) - m(b.s)) }));
@@ -1455,7 +1462,13 @@ function renderOverview() {
   const unit = { eat: '家', spa: '次', cafe: '家', bar: '家', shop: '處', see: '處' };
   // 每天：左邊日期和主題，右邊列出當天要去的地方（「其他」類型只列清邁機場，回家休息、放行李這類不列）
   const listed = it => it.cls !== 'other' || /清邁.*機場/.test(it.t);
-  html += '<div class="ov-sec">每天</div>' + days.map(d => {
+  const todos = CHECKS.filter(c => c.kind === 'todo').sort((a, b) => a.order - b.order);
+  const tips = CHECKS.filter(c => c.kind === 'tip').sort((a, b) => a.order - b.order);
+  html += `<div class="seg ov-seg" data-i="${ovTab === 'todo' ? 1 : 0}"><span class="seg-thumb"></span>
+    <button type="button" data-ovtab="days"${ovTab === 'days' ? ' class="on"' : ''}>每天</button>
+    <button type="button" data-ovtab="todo"${ovTab === 'todo' ? ' class="on"' : ''}>待辦清單</button></div>`;
+  if (ovTab === 'days') {
+  html += days.map(d => {
     const places = d.items.filter(listed).map(it => `
       <span class="ov-place"><span class="ov-dot ${it.cls || 'eat'}"></span><span class="nm">${esc(it.t)}</span>${it.booked ? '<i class="ti ti-circle-check ov-ok"></i>' : ''}</span>`).join('');
     return `<button type="button" class="ov-row${d.k === today ? ' today' : ''}" data-go="${d.k}"><span class="ov-when"><b>${d.info.date} ${d.info.wd}${d.k === today ? '<span class="ov-today">今天</span>' : ''}</b>${esc(d.info.zh || '')}</span>
@@ -1469,21 +1482,29 @@ function renderOverview() {
     ? '<div class="ov-chips">' + booked.map(({ d, it }) =>
       `<button type="button" class="ov-chip ${it.cls || 'eat'}" data-go="${d.k}"><b>${d.info.date} ${T(it.s)}</b> ${esc(shortName(it.t))}</button>`).join('') + '</div>'
     : '<div class="ov-empty">還沒有勾「已訂位」的行程</div>');
+  } else {
   // 待辦、注意事項都照新增的順序；做完的待辦留在原位，劃線變淡
-  const todos = CHECKS.filter(c => c.kind === 'todo').sort((a, b) => a.order - b.order);
-  const tips = CHECKS.filter(c => c.kind === 'tip').sort((a, b) => a.order - b.order);
   const addRow = (kind, ph) => `<label class="ck-add"><i class="ti ti-plus"></i><input type="text" class="ck-new" data-kind="${kind}" placeholder="${ph}" enterkeyhint="done" autocomplete="off"></label>`;
-  html += `<div class="ov-sec">待辦清單${todos.length ? `<span class="ov-prog">${todos.filter(c => c.done).length}/${todos.length}</span>` : ''}</div>
-    <div class="ck-list">${todos.map(c => `<div class="ck${c.done ? ' done' : ''}" data-ck="${c.id}">
+  html += `<div class="ck-list">${todos.map(c => `<div class="ck${c.done ? ' done' : ''}" data-ck="${c.id}">
       <button type="button" class="ck-box" aria-label="${c.done ? '取消勾選' : '勾選'}：${esc(c.text)}"><i class="ti ti-check"></i></button>
       <button type="button" class="ck-txt">${esc(c.text)}${c.who ? `<span class="ck-who">${esc(c.who)}</span>` : ''}</button></div>`).join('')}${addRow('todo', '新增待辦')}</div>`;
   html += `<div class="ov-sec">注意事項</div>
     <div class="ck-list">${tips.map(c => `<div class="ck" data-ck="${c.id}"><span class="ck-bullet"></span><button type="button" class="ck-txt">${esc(c.text)}</button></div>`).join('')}${addRow('tip', '新增注意事項')}</div>`;
+  }
   ovEl.innerHTML = html;
 }
 ovEl.addEventListener('click', e => {
   if (ckSuppress) { ckSuppress = false; e.preventDefault(); e.stopPropagation(); return; }   // 剛拖曳完放開的那一下，不算點擊
   const b = e.target.closest('[data-go]'); if (b) { showPage(b.dataset.go); return; }
+  const tab = e.target.closest('[data-ovtab]');
+  if (tab) {
+    if (tab.dataset.ovtab === ovTab) return;
+    ovTab = tab.dataset.ovtab; try { localStorage.setItem('cm-ov-tab', ovTab); } catch {}
+    const seg = ovEl.querySelector('.ov-seg'); seg.dataset.i = ovTab === 'todo' ? 1 : 0;   // 先讓白色小塊滑過去，再換內容
+    seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === tab));
+    setTimeout(renderOverview, 180);
+    return;
+  }
   const row = e.target.closest('[data-ck]'); if (!row) return;
   const c = CHECKS.find(x => x.id === row.dataset.ck); if (!c) return;
   if (e.target.closest('.ck-box')) withAuth(() => saveChecks([{ ...c, done: !c.done }]));
