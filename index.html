@@ -2518,7 +2518,7 @@ function wireEditor() {
     const n = (ed.group ? findItem(ed.id)[1].stops : findItem(ed.id)[1].alts)?.length || 0, cur = ed.group ? 'group' : 'pick';
     const hint = ed.conv === cur ? '' : ed.conv === 'split'
       ? (ed.group ? `存檔後拆成 ${n} 張獨立的卡片，時間照每一站原本的時間` : `存檔後拆成 ${n} 張獨立的卡片，都排在這個時段（會並排），之後再刪掉不去的`)
-      : ed.conv === 'pick' ? '每一站變成一個選項，每一站各自的時間拿掉，整張維持這個時段'
+      : ed.conv === 'pick' ? `每一站變成一個選項，時段改成停留最久的那一家（${durLabel(Math.max(15, ...(findItem(ed.id)[1].stops || []).map(x => +x.dur || 0)))}）`
       : `每個選項依序變成一站，從開始時間排下去、平分這個時段（每站約 ${Math.max(5, Math.round(ed.dur / Math.max(1, n) / 5) * 5)} 分）`;
     $('edConvHint').hidden = !hint; $('edConvHint').innerHTML = hint ? '<i class="ti ti-info-circle"></i> ' + hint : '';
   });
@@ -2575,8 +2575,11 @@ function convertCard(id, to, snap) {
     msg = `已把「${it.t}」拆成 ${cards.length} 張卡片`;
   } else if (to === 'pick') {
     it.alts = subs.map(x => ({ name: x.name, desc: x.desc || '', info: '', map: x.map || '', loc: x.loc || '', pid: x.pid || '', mine: x.mine || '', note: x.note || '' }));
+    // 幾家選一家去：時段取停留最久的那一家（從原本的開始時間算），不是全部加起來
+    const longest = Math.max(15, ...subs.map(x => +x.dur || 0));
+    it.e = hhmm(Math.min(m(it.s) + longest, DAY_END));
     delete it.stops; it.group = false;
-    msg = `「${it.t}」改成多選一`;
+    msg = `「${it.t}」改成多選一，時段 ${T(it.s)}–${T(it.e)}`;
   } else {
     const n = Math.max(1, subs.length), dur = Math.max(5, Math.round((m(it.e) - m(it.s)) / n / 5) * 5);
     it.stops = subs.map((x, i) => ({ name: x.name, desc: x.desc || '', map: x.map || '', loc: x.loc || '', pid: x.pid || '', mine: x.mine || '', note: x.note || '',
