@@ -172,7 +172,7 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 /* 多個地點：編號圈圈之間用虛線連起來（依序走）；分隔線從店名那一欄開始畫，不切過虛線 */
 .stop[data-kind="stop"]{position:relative;border-top:0}
 .stop[data-kind="stop"]:not(:first-child)::after{content:"";position:absolute;top:0;left:32px;right:0;border-top:1px solid var(--line)}
-.stop.chain::before{content:"";position:absolute;left:10.25px;top:35px;bottom:-9px;   /* 上下各跟圓圈留 2px */width:1.5px;opacity:.55;   /* 細細的短虛線：2px 一段、間隔 3px */
+.stop.chain::before{content:"";position:absolute;left:10.25px;top:38px;bottom:-6px;   /* 上下各跟圓圈留 5px */width:1.5px;opacity:.55;   /* 細細的短虛線：2px 一段、間隔 3px */
   background:repeating-linear-gradient(to bottom,var(--c-fg,var(--eat-fg)) 0 2px,transparent 2px 5px)}
 .stop[data-kind="stop"] .num{position:relative;z-index:1}
 /* 展開後：線條和編號跟著卡片的類型顏色；白色清單一路延伸到卡片底部，不留一大塊色塊 */
