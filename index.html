@@ -122,7 +122,11 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .blk .s{font-size:12px;margin-top:1px}
 /* 一句話描述：放在標題和時間中間，卡片放得下幾行就顯示幾行 */
 .blk .d{font-size:12px;line-height:16px;margin:1px 0 2px;opacity:.85;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
-.car{position:absolute;left:12px;z-index:4;height:16px;line-height:16px;font-size:11px;color:var(--text2);white-space:nowrap;padding:0 4px;margin-left:-4px;background:var(--bg,#fff)}   /* 白底：「現在」的線經過時在這裡斷開 */
+/* 交通時間：小泡泡，左右置中在卡片欄（卡片 left:4px），放在上一張結尾和這一張開頭的正中間；離得遠就用虛線把兩張卡片連起來 */
+.car{position:absolute;left:calc(50% + 2px);transform:translateX(-50%);z-index:6;display:flex;align-items:center;gap:1px;height:18px;box-sizing:border-box;padding:0 5px;
+  border:1px solid var(--line);border-radius:999px;background:#fff;font-size:10px;line-height:16px;color:var(--text2);white-space:nowrap}
+.car i{font-size:11px}
+.car-line{position:absolute;left:calc(50% + 2px);width:1px;margin-left:-.5px;z-index:2;background:repeating-linear-gradient(to bottom,var(--line) 0 3px,transparent 3px 7px)}
 .eat{background:var(--eat-bg);border-color:var(--eat-bd);color:var(--eat-fg);--c-bg:var(--eat-bg);--c-bd:var(--eat-bd);--c-fg:var(--eat-fg)}
 .spa{background:var(--spa-bg);border-color:var(--spa-bd);color:var(--spa-fg);--c-bg:var(--spa-bg);--c-bd:var(--spa-bd);--c-fg:var(--spa-fg)}
 .cafe{background:var(--cafe-bg);border-color:var(--cafe-bd);color:var(--cafe-fg);--c-bg:var(--cafe-bg);--c-bd:var(--cafe-bd);--c-fg:var(--cafe-fg)}
@@ -323,8 +327,7 @@ html.on-map:not(.sheet-lock),html.on-map:not(.sheet-lock) body{background:#f4f0e
 .eb-label{flex:1}
 .eb-btn{height:26px;padding:0 12px;border-radius:999px;border:0;background:var(--accent-bg);color:var(--accent-fg);font-size:13px;font-weight:600;cursor:pointer}
 .eb-btn.done{background:var(--accent-fg);color:#fff}
-.eb-btn.ic{padding:0 9px;font-size:15px;line-height:26px}
-.car.stale{opacity:.5}
+.car.stale,.car-line.stale{opacity:.5}
 .car .q{margin-left:2px;font-weight:600}
 .rt-list{display:flex;flex-direction:column;gap:2px;margin-top:4px}
 .rt-row{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line);font-size:13px;line-height:1.45}
@@ -406,6 +409,12 @@ html.on-map:not(.sheet-lock),html.on-map:not(.sheet-lock) body{background:#f4f0e
   border:0;background:var(--accent-fg);color:#fff;font-size:24px;display:none;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(60,30,10,.22);cursor:pointer}
 .fab i{display:block;line-height:1}
 .editing .fab.day{display:flex}
+/* ＋ 上方的淺色小按鈕：計算這天的交通（樣式跟頁首的編輯按鈕一樣，不搶 ＋ 的風頭） */
+.fab-sub{position:fixed;right:calc(max(20px,calc(50vw - 220px)) + 7px);bottom:calc(88px + env(safe-area-inset-bottom));z-index:40;width:38px;height:38px;border-radius:50%;
+  border:1px solid var(--line);background:#fff;color:var(--accent-fg);font-size:18px;display:none;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(60,30,10,.12);cursor:pointer}
+.fab-sub i{display:block;line-height:1}
+.editing .fab-sub.day{display:flex}
+.editing .toast{bottom:calc(140px + env(safe-area-inset-bottom))}   /* 編輯模式右下有兩顆按鈕，提示往上移 */
 .toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));z-index:60;transform:translate(-50%,20px);opacity:0;pointer-events:none;
   display:flex;align-items:center;gap:12px;max-width:calc(100% - 32px);padding:10px 14px;border-radius:12px;background:#2b2622;color:#fff;font-size:14px;
   transition:opacity .2s,transform .2s}
@@ -589,7 +598,7 @@ input.sw:focus-visible{outline:2px solid var(--accent-bg);outline-offset:2px}
 <div class="app">
   <header>
     <div class="editbar"><span class="eb-label"><i class="ti ti-pencil"></i> <span id="ebDay"></span>編輯中 · <span id="ebSt" class="eb-st">點空白處新增</span></span>
-      <button type="button" class="eb-btn ic" id="ebRoute" aria-label="計算這天的交通時間"><i class="ti ti-route"></i></button><button type="button" class="eb-btn" id="editCancel">取消</button><button type="button" class="eb-btn done" id="editDone">完成</button></div>
+      <button type="button" class="eb-btn" id="editCancel">取消</button><button type="button" class="eb-btn done" id="editDone">完成</button></div>
     <nav class="tabs"><div class="tabs-in">
       <button class="tab" data-page="overview">總覽</button><button class="tab day" data-page="d1" aria-label="第 1 天">1</button><button class="tab day" data-page="d2" aria-label="第 2 天">2</button>
       <button class="tab day" data-page="d3" aria-label="第 3 天">3</button><button class="tab day" data-page="d4" aria-label="第 4 天">4</button><button class="tab day" data-page="d5" aria-label="第 5 天">5</button>
@@ -609,6 +618,7 @@ input.sw:focus-visible{outline:2px solid var(--accent-bg);outline-offset:2px}
     <div class="map-zoom"><button type="button" data-zoom="1" aria-label="放大"><i class="ti ti-plus"></i></button><button type="button" data-zoom="-1" aria-label="縮小"><i class="ti ti-minus"></i></button></div></div>
 </div>
 <button type="button" class="fab" id="fab" aria-label="新增行程"><i class="ti ti-plus"></i></button>
+<button type="button" class="fab-sub" id="routeFab" aria-label="計算這天的交通時間"><i class="ti ti-route"></i></button>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="sheet-bg" id="sheetBg"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="shTitle"></div>
@@ -1189,11 +1199,13 @@ function renderCards(items) {
   items.forEach((it, i) => {
     const prev = items[i - 1];
     if (it.travel && prev) {
-      // 交通時間放在上一張結尾與這一張開頭的正中間，空隙太小就不顯示；前後地點變了（換店、搬動）就變淡加問號
-      const gap = y(it.s) - (y(prev.e) - 3), stale = routeStale(prev, it);
-      const el = div('car' + (stale ? ' stale' : ''), `<i class="ti ti-${modeIcon(parseRoute(it.troute).mode)}"></i> ${esc(it.travel)}${stale ? '<span class="q">?</span>' : ''}`);
+      // 交通時間：小泡泡放在上一張結尾和這一張開頭的正中間（太近就壓在兩張中間，重疊的話放在這一張的上緣）；
+      // 空隙比泡泡高時，虛線把兩張卡片連起來。前後地點變了（換店、搬動）就變淡加問號
+      const end = y(prev.e) - 3, gap = y(it.s) - end, stale = routeStale(prev, it);
+      if (gap > 18) { const ln = div('car-line' + (stale ? ' stale' : '')); ln.style.height = gap + 'px'; place(ln, Math.round(end)); }
+      const el = div('car' + (stale ? ' stale' : ''), `<i class="ti ti-${modeIcon(parseRoute(it.troute).mode)}"></i>${esc(it.travel.replace(/\s+/g, ''))}${stale ? '<span class="q">?</span>' : ''}`);
       if (stale) el.title = '前後的地點變了，這個時間可能不準，可以重新計算';
-      if (gap >= 14) place(el, Math.round(y(prev.e) - 3 + gap / 2 - 8));
+      place(el, Math.round((gap >= 0 ? end + gap / 2 : y(it.s)) - 9));
     }
     const top = y(it.s), mins = m(it.e) - m(it.s), h = Math.max(mins * PX - 3, 28);
     const extra = clash.has(it.id) ? ' clash' : '';
@@ -1274,7 +1286,7 @@ function updateHeader(page) {
   mapBtn.innerHTML = `<i class="ti ${mapMode ? 'ti-list' : 'ti-map'}"></i>`;
   mapBtn.setAttribute('aria-label', mapMode ? '回到清單' : '看地圖');
   applyHeaderEditable();
-  document.getElementById('ebRoute').hidden = !isDay(page);
+  document.getElementById('routeFab').classList.toggle('day', isDay(page));
   document.getElementById('ebDay').textContent = isDay(page) ? `第 ${dayNum(page)} 天` : page === 'cand' ? '備選' : '';
   document.querySelector('.tab.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
   updateTabFade();
@@ -3274,7 +3286,7 @@ function openDayPicker(id) {
   sheet.querySelector('.dp-day').click();
 }
 // 編輯模式上方的「交通」：把這天每一段都算一遍，列出「原本 → 新的」，勾選要套用的
-document.getElementById('ebRoute').addEventListener('click', () => { if (isDay(current)) openRoutePlanner(current); });
+document.getElementById('routeFab').addEventListener('click', () => { if (isDay(current)) openRoutePlanner(current); });
 async function openRoutePlanner(day) {
   const items = [...DATA[day]].sort((a, b) => m(a.s) - m(b.s) || m(a.e) - m(b.e));
   const segs = items.slice(1).map((it, i) => { const prev = items[i]; return { it, prev, a: lastLoc(prev), b: firstLoc(it) }; });
