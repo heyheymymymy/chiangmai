@@ -779,6 +779,31 @@ const modeName = k => (ROUTE_MODES[k] || ROUTE_MODES.drive)[0], modeIcon = k => 
 const routeText = r => r.min ? `${r.min} 分` : '';
 const routeDesc = r => r.error ? r.error : `${modeName(r.mode)} ${r.min ? `${r.min} 分` : '不用移動'}・${r.m >= 1000 ? `${(r.m / 1000).toFixed(1)} 公里` : `${r.m} 公尺`}`;
 // 舊資料（手機裡存的）：選項的 info 改叫 alert
+// ---------- 同一個地點連動 ----------
+// 同一個地方（同一個 Google 地點代號，或同一個地圖連結）出現在好幾張卡片、一站、選項：地點本身的資料共用，改一張其他一起改
+// 只連動地點本身：地圖、座標、營業時間、類型；名稱、描述、時間、提醒、交通時間各自保留（每次去做的事不一樣）
+const SHARED_PLACE = ['map', 'loc', 'pid', 'hours', 'cls'];
+function placeEntries() {   // 所有「一家店」：單一地點的卡片、多個地點的每一站、多選一的每個選項
+  const out = [];
+  for (const k of ALL_KEYS) for (const it of DATA[k] || []) {
+    if (it.group) (it.stops || []).forEach(x => out.push({ x, name: x.name, card: it }));
+    else if (it.alts?.length) it.alts.forEach(x => out.push({ x, name: x.name, card: it }));
+    else out.push({ x: it, name: it.t, card: it });
+  }
+  return out;
+}
+const samePlace = (a, b) => (!!a.pid && a.pid === b.pid) || (!!a.map && a.map === b.map);
+const placeMates = (who, self) => who && (who.pid || who.map) ? placeEntries().filter(e => e.x !== self && e.x !== who && samePlace(who, e.x)) : [];
+// before：改之前的地點資料；self：改好的那一家。回傳一起更新的有幾個
+function syncPlace(before, self) {
+  const diff = SHARED_PLACE.filter(k => (before[k] || '') !== (self[k] || ''));
+  if (!diff.length) return [];
+  const mates = placeMates(before, self);
+  mates.forEach(e => diff.forEach(k => { e.x[k] = self[k] || ''; }));
+  return mates;
+}
+const syncNote = mates => mates.length ? `，同一個地點的其他 ${mates.length} 張（${[...new Set(mates.map(e => e.name))].slice(0, 2).join('、')}${mates.length > 2 ? '…' : ''}）也一起更新了` : '';
+const mateHint = n => n ? `<i class="ti ti-link"></i> 還有 ${n} 張卡片是同一個地點，地圖改了會一起更新` : '';
 function fixAlts() { for (const k of ALL_KEYS) for (const it of DATA[k] || []) for (const a of it.alts || []) if ('info' in a) { if (!a.alert && a.info) a.alert = a.info; delete a.info; } }
 const canonSub = x => { const o = {}; SUB_KEYS.forEach(k => { if (!isEmpty(x[k])) o[k] = k === 'dur' ? +x[k] : x[k]; }); return o; };
 const canon = it => {
@@ -2600,7 +2625,8 @@ function openEditor(id, startAt, toDay, replaceId) {
     ${ed.group || ed.pick ? '' : `
     <label class="ed-field"><span class="ed-lab">地圖 <span class="ed-lab-hint">貼上 Google 地圖的分享連結最準確</span></span>
       <span class="clr-wrap"><input id="edMap" type="text" value="${esc(ed.map)}" placeholder="貼上分享連結，或輸入店名" autocomplete="off" inputmode="url"><button type="button" class="clr-btn" aria-label="清除" tabindex="-1"><i class="ti ti-x"></i></button></span></label>
-    <div class="map-status" id="edMapStatus"></div>`}
+    <div class="map-status" id="edMapStatus"></div>
+    <div class="map-status" id="edMates"${placeMates(ed.id && !ed.group && !ed.pick ? findItem(ed.id)[1] : null, ed.id ? findItem(ed.id)[1] : null).length ? '' : ' hidden'}>${mateHint(placeMates(ed.id && !ed.group && !ed.pick ? findItem(ed.id)[1] : null, ed.id ? findItem(ed.id)[1] : null).length)}</div>`}
     <div class="ed-field"><span class="ed-lab-row"><span class="ed-lab">交通時間（從上一站過來）</span>
         ${isDay(ed.day) ? '<button type="button" class="swap-btn" id="edRoute"><i class="ti ti-route"></i> 自動計算</button>' : ''}</span>
       <div class="ed-travel"><div class="seg ed-modes" id="edModes" style="--n:${Object.keys(ROUTE_MODES).length}"><span class="seg-thumb"></span>${Object.keys(ROUTE_MODES).map(k =>
@@ -2886,7 +2912,9 @@ function saveEditor() {
     if (push && delta) laterItems().forEach(x => { x.s = hhmm(m(x.s) + delta); x.e = hhmm(m(x.e) + delta); });
     // 合併區塊整組移動：裡面每一站跟著平移
     if (ed.group) { const shift = sMin - m(ed.orig.s); if (shift) findItem(ed.id)[1].stops.forEach(x => x.s = hhmm(m(x.s) + shift)); }
-    Object.assign(findItem(ed.id)[1], fields);
+    const me = findItem(ed.id)[1], before = { ...me };
+    Object.assign(me, fields);
+    var mates = ed.group || ed.pick ? [] : syncPlace(before, me);   // 同一個地點的其他卡片一起更新
     moveDay(ed.id, ed.fromDay, ed.day);
     if (swapOut()) { saveData(`換成「${t}」`); closeSheet(); renderPage(current); updateHeader(current);
       toast(`已把「${ed.oldT}」換成「${t}」，「${ed.oldT}」移到備選`, '復原', undo, UNDO_MS); return; }
@@ -2900,7 +2928,7 @@ function saveEditor() {
     toast(`已${ed.isNew ? '新增' : '移'}到${where}`, '前往', () => { location.hash = to; });
     return;
   }
-  toast(ed.isNew ? '已新增' : push && delta ? `已儲存，後面 ${laterItems().length} 個行程一起${delta > 0 ? '順延' : '提前'}` : '已儲存', '復原', undo, UNDO_MS);
+  toast((ed.isNew ? '已新增' : push && delta ? `已儲存，後面 ${laterItems().length} 個行程一起${delta > 0 ? '順延' : '提前'}` : '已儲存') + syncNote(mates || []), '復原', undo, UNDO_MS);
 }
 
 // ---------- 從 Google 地圖導入（備選頁） ----------
@@ -3075,12 +3103,15 @@ async function locateMissing() {
   if (!jobs.length) return;
   locRunning = true;
   let n = 0;
+  const found = new Map();   // 同一個地點（例如好幾張「回家休息」）只查一次
   for (const j of jobs) {
     const fromUrl = locFromUrl(j.q);
     let loc = fromUrl, pid = '';
-    if (!loc) {
+    if (!loc && found.has(j.q)) ({ loc, pid } = found.get(j.q));
+    else if (!loc) {
       try { const p = (await api({ ...getAuth(), action: 'lookupPlace', link: /^https?:/.test(j.q) || /chiang/i.test(j.q) ? j.q : j.q + ' Chiang Mai' }, 60000)).place; if (p?.places) { loc = p.loc; pid = p.pid || ''; } }
       catch {}
+      found.set(j.q, { loc, pid });
     }
     const [, it] = findItem(j.id);
     if (loc && it && !j.x.loc && (j.x.map || j.x.name || j.x.t) === j.q) { j.x.loc = loc; j.x.pid = pid; n++; }
@@ -3436,6 +3467,7 @@ function openSubEditor(cardId, kind, idx, fromCand, replace) {
     <label class="ed-field"><span class="ed-lab">地圖 <span class="ed-lab-hint">貼上 Google 地圖的分享連結最準確</span></span>
       <span class="clr-wrap"><input id="sbMap" type="text" value="${esc(sub.map)}" placeholder="貼上分享連結，或輸入店名" autocomplete="off" inputmode="url"><button type="button" class="clr-btn" aria-label="清除" tabindex="-1"><i class="ti ti-x"></i></button></span></label>
     <div class="map-status" id="sbMapStatus"></div>
+    ${!isNew && !c && placeMates(sub, sub).length ? `<div class="map-status">${mateHint(placeMates(sub, sub).length)}</div>` : ''}
     ${photoField('sbPhoto', nk)}
     <label class="ed-field"><span class="ed-lab">筆記摘要</span>
       <textarea id="sbMine" rows="3" placeholder="想提醒大家的事">${esc(sub.mine || '')}</textarea></label>
@@ -3513,8 +3545,9 @@ function saveSub() {
     const os = isStop ? m(out.s) : m(card.s), od = isStop ? out.dur : +out.dur || m(card.e) - m(card.s);
     DATA.cand.push(cardOf(placeOf(out, card.cls), { s: hhmm(os), e: hhmm(Math.min(os + od, DAY_END)) }));
   }
+  const mates = !sed.isNew && !sed.replace ? syncPlace(list[sed.idx], sub) : [];   // 同一個地點的其他卡片一起更新
   if (sed.isNew) list.push(sub); else list[sed.idx] = sub;
-  let note = sed.isNew ? (isStop ? '已新增一站' : '已新增選項') : '已儲存';
+  let note = (sed.isNew ? (isStop ? '已新增一站' : '已新增選項') : '已儲存') + syncNote(mates);
   if (sed.fromCand) {   // 從備選挑的：搬進來之後，備選裡那張拿掉
     const i = DATA.cand.findIndex(x => x.id === sed.fromCand);
     if (i >= 0) DATA.cand.splice(i, 1);
