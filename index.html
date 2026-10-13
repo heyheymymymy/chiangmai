@@ -140,6 +140,11 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .list{display:none;margin:8px -10px 0;background:#fff;background:color-mix(in srgb,var(--c-bg,var(--eat-bg)) 30%,#fff);border-top:1px solid var(--c-bd,var(--eat-bd));padding:2px 12px 4px;color:var(--text);cursor:default}
 .grp.open .list{display:block}
 .grp.open .sum{display:none}
+/* 展開時標題列右邊顯示整張的時間（收合時時間在摘要裡，不重複） */
+.grp .head .hd-tm{display:none;margin-left:auto;margin-right:8px;flex:none;font-size:12px;font-variant-numeric:tabular-nums;opacity:.85}
+.grp.open .head .hd-tm{display:block}
+.grp{container-type:inline-size}
+@container (max-width: 260px){.grp.open .head .hd-tm{display:none}}   /* 時間重疊、卡片被擠窄時放不下，不顯示 */
 .stop{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
 .stop:first-child{border-top:0}
 .num{width:22px;height:22px;border-radius:50%;background:var(--c-bg,var(--eat-bg));color:var(--c-fg,var(--eat-fg));font-size:12px;font-weight:600;
@@ -164,6 +169,12 @@ header{position:sticky;top:0;z-index:10;background:var(--page);padding:calc(12px
 .num.pick{background:transparent;border:2px solid var(--c-bd,var(--eat-bd));width:18px;height:18px;margin:3px 2px 0}
 .list .cap{font-size:11px;color:var(--muted);padding-top:8px}
 .list .cap + .stop{border-top:0}
+/* 多個地點：編號圈圈之間用虛線連起來（依序走）；分隔線從店名那一欄開始畫，不切過虛線 */
+.stop[data-kind="stop"]{position:relative;border-top:0}
+.stop[data-kind="stop"]:not(:first-child)::after{content:"";position:absolute;top:0;left:32px;right:0;border-top:1px solid var(--line)}
+.stop.chain::before{content:"";position:absolute;left:10.25px;top:35px;bottom:-9px;   /* 上下各跟圓圈留 2px */width:1.5px;opacity:.55;   /* 細細的短虛線：2px 一段、間隔 3px */
+  background:repeating-linear-gradient(to bottom,var(--c-fg,var(--eat-fg)) 0 2px,transparent 2px 5px)}
+.stop[data-kind="stop"] .num{position:relative;z-index:1}
 /* 展開後：線條和編號跟著卡片的類型顏色；白色清單一路延伸到卡片底部，不留一大塊色塊 */
 .grp.open{display:flex;flex-direction:column;padding-bottom:0}
 .grp.open .list{flex:1 0 auto}
@@ -251,6 +262,14 @@ html.sheet-lock body{position:fixed;left:0;right:0;bottom:0;overflow:hidden}
 .edit-btn i{display:block;line-height:1}
 .editing .edit-btn{display:none}
 /* ---------- 地圖 ---------- */
+/* 分段切換（卡片樣式）：三段等寬，選中的那段是白色小塊，切換時滑過去 */
+.seg{position:relative;display:flex;height:36px;padding:3px;border-radius:10px;background:#EFEBE5;box-sizing:border-box}
+.seg-thumb{position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px) / 3);border-radius:8px;background:#fff;box-shadow:0 1px 3px rgba(60,40,20,.16);transition:transform .2s ease}
+.seg[data-i="1"] .seg-thumb{transform:translateX(100%)}
+.seg[data-i="2"] .seg-thumb{transform:translateX(200%)}
+.seg button{position:relative;z-index:1;flex:1;min-width:0;padding:0;border:0;border-radius:8px;background:none;font:inherit;font-size:14px;color:var(--text2);cursor:pointer;transition:color .2s}
+.seg button.on{color:var(--text);font-weight:600}
+@media (prefers-reduced-motion:reduce){.seg-thumb{transition:none}}
 .map-btn{position:absolute;left:16px;bottom:10px;width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:#fff;
   color:var(--text2);font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .map-btn i{display:block;line-height:1}
@@ -1110,11 +1129,11 @@ function renderCards(items) {
         ? `<div class="cap">這幾間都可以去，到時候再一起選一間</div>${it.alts.map((a, i) => `
           <div class="stop" data-kind="alt" data-idx="${i}"><div class="num pick"></div>
             <div style="flex:1;min-width:0"><div class="n">${esc(a.name)}</div>${a.desc ? `<div class="o">${esc(a.desc)}</div>` : ''}
-              ${a.info ? `<div class="m">${esc(a.info)}</div>` : ''}</div>
+              ${a.info || +a.dur ? `<div class="m">${+a.dur ? `<i class="ti ti-clock"></i> ${T(it.s)} · ${durLabel(+a.dur)}` : ''}${a.info && +a.dur ? '　' : ''}${esc(a.info || '')}</div>` : ''}</div>
             ${a.map ? navBtn(a.map, a.name) : ''}${subEditIc}
           </div>`).join('')}<button type="button" class="add-sub" data-kind="alt"><i class="ti ti-plus"></i> 新增選項</button>`
         : `${it.stops.map((st, i) => `
-          <div class="stop" data-kind="stop" data-idx="${i}"><div class="num">${i + 1}</div>
+          <div class="stop${i < it.stops.length - 1 ? ' chain' : ''}" data-kind="stop" data-idx="${i}"><div class="num">${i + 1}</div>
             <div style="flex:1;min-width:0"><div class="n">${esc(st.name)}</div>${st.orig ? `<div class="o">${esc(st.orig)}</div>` : ''}${st.desc ? `<div class="o">${esc(st.desc)}</div>` : ''}
               <div class="m"><i class="ti ti-clock"></i> ${T(st.s)} · ${durLabel(st.dur)}${st.area ? `　<i class="ti ti-map-pin"></i> ${esc(st.area)}` : ''}</div></div>
             ${st.map ? navBtn(st.map, st.name) : ''}${subEditIc}
@@ -1122,7 +1141,7 @@ function renderCards(items) {
       g.innerHTML = `
         <div class="head"><span class="t" style="font-size:15px;font-weight:600">${pick
           ? `<i class="ti ti-arrows-split-2"></i> ${esc(it.t)}`
-          : `<i class="ti ti-stack-2"></i> ${esc(it.t)} · ${it.stops.length} 站`}${editIc}</span><i class="ti ti-chevron-down chev"></i></div>
+          : `<i class="ti ti-stack-2"></i> ${esc(it.t)} · ${it.stops.length} 站`}${editIc}</span><span class="hd-tm">${T(it.s)}–${T(it.e)}</span><i class="ti ti-chevron-down chev"></i></div>
         <div class="sum"><div style="font-size:12px;line-height:1.6${pick ? ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis' : ''}">${pick
           ? esc(it.alts.map(a => a.name).join('／'))
           : esc(it.stops.map(st => st.short || st.name).join(' → '))}</div><div style="font-size:12px">${T(it.s)}–${T(it.e)} · ${durLabel(mins)}${tags}</div></div>
@@ -2195,7 +2214,9 @@ function mergeInto(id, cardId, idx, before) {
     if (stops.some(x => m(x.s) + x.dur > DAY_END)) { DATA[current] = snapshot; renderPage(current); toast('放進去之後會超過凌晨 05:00，沒有放進去'); return false; }
     fitGroup(card);
   } else {
-    card.alts.splice(idx, 0, { ...base, desc: src.desc || '', info: src.alert || '' });
+    const timed = card.alts.some(x => +x.dur);
+    card.alts.splice(idx, 0, { ...base, desc: src.desc || '', info: src.alert || '', dur: m(src.e) - m(src.s) });
+    if (timed) fitPick(card);   // 其他選項已經有停留時間：長度一樣取最久的
   }
   list.splice(list.indexOf(src), 1);
   saveData('放進區塊'); renderPage(current);
@@ -2210,7 +2231,7 @@ function pullOut(sub, at, intoId, intoIdx) {
   if (!card) return;
   const snapshot = JSON.parse(JSON.stringify(list));
   const subs = sub.kind === 'stop' ? card.stops : card.alts, x = subs[sub.idx];
-  const dur = sub.kind === 'stop' ? x.dur : m(card.e) - m(card.s);
+  const dur = sub.kind === 'stop' ? x.dur : +x.dur || m(card.e) - m(card.s);
   const start = at ?? (sub.kind === 'stop' ? m(x.s) : m(card.s));
   const it = { id: uid(), t: x.name, desc: x.desc || '', cls: card.cls, s: hhmm(start), e: hhmm(Math.min(start + dur, DAY_END)),
     map: x.map || '', loc: x.loc || '', pid: x.pid || '', mine: x.mine || '', note: x.note || '', alert: sub.kind === 'alt' ? x.info || '' : '', travel: '' };
@@ -2401,6 +2422,8 @@ function openEditor(id, startAt, toDay) {
     : { id: null, isNew: true, noteKey: '', t: '', desc: '', cls: 'eat', s: startAt, dur: 60, map: '', travel: '', booked: false, alert: '', mine: '', group: false, pick: false, kind: 'one', day: current, fromDay: current };
   // 從備選排進某一天：帶入備選的資料，時間換成新增時點的那個時間
   if (it && toDay) Object.assign(ed, { day: toDay, s: startAt, fromCand: true });
+  // 多選一的選項有設停留時間：整張的長度取最久的那一家，外層不能改長度
+  ed.fixedLen = ed.group || (ed.pick && (it?.alts || []).some(a => +a.dur > 0));
   const durs = [30, 60, 90, 120, 180];
   const cands = ed.isNew && isDay(current) ? DATA.cand || [] : [];
   openSheet(`
@@ -2409,15 +2432,15 @@ function openEditor(id, startAt, toDay) {
       <button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
     ${ed.booked ? '<div class="ed-lock"><i class="ti ti-lock"></i> 這是已訂位的行程，改時間前請先確認</div>' : ''}
     ${ed.group || ed.pick ? `
-    <div class="ed-field"><span class="ed-lab">卡片樣式</span><div class="chips" id="edConv">
-      <button type="button" class="chip" data-v="split">一個地點</button>
-      <button type="button" class="chip${ed.group ? ' on' : ''}" data-v="group">多個地點</button>
-      <button type="button" class="chip${ed.pick ? ' on' : ''}" data-v="pick">多選一</button></div>
+    <div class="ed-field"><span class="ed-lab">卡片樣式</span><div class="seg" id="edConv" data-i="${ed.group ? 1 : 2}"><span class="seg-thumb"></span>
+      <button type="button" data-v="split">一個地點</button>
+      <button type="button" class="${ed.group ? 'on' : ''}" data-v="group">多個地點</button>
+      <button type="button" class="${ed.pick ? 'on' : ''}" data-v="pick">多選一</button></div>
       <div class="ed-hint" id="edConvHint" hidden></div></div>` : `
-    <div class="ed-field"><span class="ed-lab">卡片樣式</span><div class="chips" id="edKind">
-      <button type="button" class="chip on" data-v="one">一個地點</button>
-      <button type="button" class="chip" data-v="group">多個地點</button>
-      <button type="button" class="chip" data-v="pick">多選一</button></div></div>
+    <div class="ed-field"><span class="ed-lab">卡片樣式</span><div class="seg" id="edKind" data-i="0"><span class="seg-thumb"></span>
+      <button type="button" class="on" data-v="one">一個地點</button>
+      <button type="button" data-v="group">多個地點</button>
+      <button type="button" data-v="pick">多選一</button></div></div>
     ${cands.length ? `<div id="edCandWrap">${candDropHtml(cands)}</div>` : ''}
     <div id="edGTWrap" hidden>
       <label class="ed-field"><span class="ed-lab">卡片標題</span>
@@ -2437,13 +2460,14 @@ function openEditor(id, startAt, toDay) {
       <div class="chips sm day-chips" id="edDay">${ALL_KEYS.map(k => `<button type="button" class="chip${k === ed.day ? ' on' : ''}${k === 'cand' ? ' cand' : ''}" data-v="${k}">${k === 'cand' ? '備選' : dayNum(k)}</button>`).join('')}</div></div>
     <div class="ed-field"><span class="ed-lab">時間</span>
       <div class="ed-time"><input id="edS" type="time" step="300" value="${T(ed.s)}" aria-label="開始時間">
-        <span class="ed-arrow">→</span><span class="ed-endbox" id="edEnd" aria-label="結束時間（自動算）"></span>${ed.group ? '' : `
+        <span class="ed-arrow">→</span><span class="ed-endbox" id="edEnd" aria-label="結束時間（自動算）"></span>${ed.fixedLen ? '' : `
         <span class="ed-len">
           <button type="button" class="step" data-d="-15" aria-label="少 15 分鐘"><i class="ti ti-minus"></i></button>
           <span class="ed-dur" id="edDurTxt"></span>
           <button type="button" class="step" data-d="15" aria-label="多 15 分鐘"><i class="ti ti-plus"></i></button></span>`}</div>
       <div class="ed-mid" id="edMid" hidden>結束時間過了午夜，還算同一天</div>
-      ${ed.group ? '<div class="ed-hint"><i class="ti ti-info-circle"></i> 區塊的長度由裡面的店家決定。改開始時間，所有店家會一起移動</div>' : `
+      ${ed.group ? '<div class="ed-hint"><i class="ti ti-info-circle"></i> 區塊的長度由裡面的店家決定。改開始時間，所有店家會一起移動</div>'
+        : ed.fixedLen ? '<div class="ed-hint"><i class="ti ti-info-circle"></i> 長度取停留最久的那一家。要改長度，請展開後點那一家設定停留時間</div>' : `
       <div class="chips sm" id="edDur">
         ${durs.map(d => `<button type="button" class="chip" data-v="${d}">${durLabel(d)}</button>`).join('')}</div>`}
       ${ed.isNew ? '' : '<label class="ed-switch" id="edPushWrap" hidden><input type="checkbox" class="sw" id="edPush"><span>後面的行程自動移動 <small id="edPushTxt"></small></span></label>'}
@@ -2495,11 +2519,11 @@ function wireEditor() {
     sheet.querySelectorAll('#edCls .chip').forEach(x => x.classList.toggle('on', x === c));
   });
   // 卡片樣式：改成「多個地點」或「多選一」時，上面的名稱變成第一站／第一個選項，另外取一個卡片標題
+  const segPick = (box, c) => { const bs = [...box.querySelectorAll('[data-v]')]; bs.forEach(x => x.classList.toggle('on', x === c)); box.dataset.i = bs.indexOf(c); };
   $('edKind')?.addEventListener('click', e => {
-    const c = e.target.closest('.chip'); if (!c) return;
-    ed.kind = c.dataset.v;
+    const c = e.target.closest('[data-v]'); if (!c) return;
+    ed.kind = c.dataset.v; segPick($('edKind'), c);
     if ($('edCandWrap')) $('edCandWrap').hidden = ed.kind !== 'one';   // 備選都是單一地點，只有「一個地點」才能挑
-    sheet.querySelectorAll('#edKind .chip').forEach(x => x.classList.toggle('on', x === c));
     const multi = ed.kind !== 'one';
     $('edGTWrap').hidden = !multi;
     $('edTLab').textContent = { one: '名稱', group: '第一站', pick: '第一個選項' }[ed.kind];
@@ -2512,9 +2536,8 @@ function wireEditor() {
   $('edGT')?.addEventListener('input', () => { $('edGTErr').hidden = true; });
   // 多個地點／多選一 換樣式：拆成獨立卡片，或兩種互換（存檔時才真的改）
   $('edConv')?.addEventListener('click', e => {
-    const c = e.target.closest('.chip'); if (!c) return;
-    ed.conv = c.dataset.v;
-    sheet.querySelectorAll('#edConv .chip').forEach(x => x.classList.toggle('on', x === c));
+    const c = e.target.closest('[data-v]'); if (!c) return;
+    ed.conv = c.dataset.v; segPick($('edConv'), c);
     const n = (ed.group ? findItem(ed.id)[1].stops : findItem(ed.id)[1].alts)?.length || 0, cur = ed.group ? 'group' : 'pick';
     const hint = ed.conv === cur ? '' : ed.conv === 'split'
       ? (ed.group ? `存檔後拆成 ${n} 張獨立的卡片，時間照每一站原本的時間` : `存檔後拆成 ${n} 張獨立的卡片，都排在這個時段（會並排），之後再刪掉不去的`)
@@ -2566,7 +2589,7 @@ function convertCard(id, to, snap) {
   let msg;
   if (to === 'split') {
     const cards = subs.map((x, i) => {
-      const s = it.group ? m(x.s) : m(it.s), e = it.group ? m(x.s) + x.dur : m(it.e);
+      const s = it.group ? m(x.s) : m(it.s), e = it.group ? m(x.s) + x.dur : +x.dur ? m(it.s) + +x.dur : m(it.e);
       return { id: uid(), t: x.name, desc: x.desc || '', cls: it.cls, s: hhmm(s), e: hhmm(Math.min(Math.max(e, s + 5), DAY_END)), map: x.map || '', loc: x.loc || '', pid: x.pid || '',
         travel: i === 0 ? it.travel || '' : '', booked: i === 0 && !!it.booked, alert: it.group ? (i === 0 ? it.alert || '' : '') : x.info || '', mine: x.mine || '', note: x.note || '' };
     });
@@ -2574,7 +2597,7 @@ function convertCard(id, to, snap) {
     list.sort((a, b) => m(a.s) - m(b.s));
     msg = `已把「${it.t}」拆成 ${cards.length} 張卡片`;
   } else if (to === 'pick') {
-    it.alts = subs.map(x => ({ name: x.name, desc: x.desc || '', info: '', map: x.map || '', loc: x.loc || '', pid: x.pid || '', mine: x.mine || '', note: x.note || '' }));
+    it.alts = subs.map(x => ({ name: x.name, desc: x.desc || '', info: '', dur: +x.dur || 0, map: x.map || '', loc: x.loc || '', pid: x.pid || '', mine: x.mine || '', note: x.note || '' }));
     // 幾家選一家去：時段取停留最久的那一家（從原本的開始時間算），不是全部加起來
     const longest = Math.max(15, ...subs.map(x => +x.dur || 0));
     it.e = hhmm(Math.min(m(it.s) + longest, DAY_END));
@@ -2582,8 +2605,9 @@ function convertCard(id, to, snap) {
     msg = `「${it.t}」改成多選一，時段 ${T(it.s)}–${T(it.e)}`;
   } else {
     const n = Math.max(1, subs.length), dur = Math.max(5, Math.round((m(it.e) - m(it.s)) / n / 5) * 5);
-    it.stops = subs.map((x, i) => ({ name: x.name, desc: x.desc || '', map: x.map || '', loc: x.loc || '', pid: x.pid || '', mine: x.mine || '', note: x.note || '',
-      s: hhmm(Math.min(m(it.s) + i * dur, DAY_END - dur)), dur }));
+    let at = m(it.s);   // 有各自的停留時間就照著排，沒有就平分
+    it.stops = subs.map(x => { const d = +x.dur || dur, st = { name: x.name, desc: x.desc || '', map: x.map || '', loc: x.loc || '', pid: x.pid || '', mine: x.mine || '', note: x.note || '',
+      s: hhmm(Math.min(at, DAY_END - d)), dur: d }; at += d; return st; });
     delete it.alts; it.group = true; fitGroup(it);
     msg = `「${it.t}」改成多個地點，每站 ${dur} 分`;
   }
@@ -3063,6 +3087,16 @@ function fitGroup(card) {
   const changed = s !== card.s || e !== card.e;
   card.s = s; card.e = e; return changed;
 }
+// 多選一：有設停留時間的話，整張的長度取最久的那一家（從原本的開始時間算）
+function fitPick(card) {
+  const alts = card.alts || [];
+  if (!alts.some(a => +a.dur)) return false;
+  const len = m(card.e) - m(card.s);
+  alts.forEach(a => { if (!+a.dur) a.dur = len; });   // 還沒設定的那幾家，當成原本的長度
+  const longest = Math.max(...alts.map(a => +a.dur));
+  const e = hhmm(Math.min(m(card.s) + longest, DAY_END)), changed = e !== card.e;
+  card.e = e; return changed;
+}
 const subList = (it, kind) => kind === 'stop' ? it.stops : (it.alts = it.alts || []);
 const mapStatusHtml = (v, name) => {
   const find = name ? `<br><a href="${esc(mapHref(name + ' Chiang Mai'))}" target="_blank" rel="noopener">去 Google 地圖找「${esc(name)}」</a>` : '';
@@ -3085,7 +3119,7 @@ function openSubEditor(cardId, kind, idx, fromCand) {
         area: area ? area[1].trim() : '',
         mine: kind === 'stop' ? [(c.mine || '').replace(/^位置：.+$\n?/m, '').trim(), c.alert].filter(Boolean).join('\n') : c.mine || '' }   // 一站沒有提醒欄位，提醒併進筆記摘要
     : isNew ? (kind === 'stop' ? { s: at, dur: 15, name: '' } : { name: '' }) : list[idx];
-  sed = { cardId, kind, idx, isNew, dur: sub.dur || 15, fromCand: c ? c.id : null, prefill: c ? sub : null };
+  sed = { cardId, kind, idx, isNew, dur: +sub.dur || (kind === 'alt' ? m(card.e) - m(card.s) : 15), fromCand: c ? c.id : null, prefill: c ? sub : null };
   const isStop = kind === 'stop', nk = isNew && !c ? '' : subNoteKey(sub);
   const cands = isNew && !c ? DATA.cand || [] : [];
   openSheet(`
@@ -3111,6 +3145,14 @@ function openSubEditor(cardId, kind, idx, fromCand) {
       <div><div class="chips sm" id="sbDur">${[5, 10, 15, 30, 45, 60].map(d => `<button type="button" class="chip" data-v="${d}">${durLabel(d)}</button>`).join('')}</div></div></div>
     <label class="ed-field"><span class="ed-lab">區域</span>
       <input id="sbArea" type="text" value="${esc(sub.area)}" placeholder="例如：寧曼區、Nimman Soi 13" autocomplete="off"></label>` : `
+    <div class="ed-field"><span class="ed-lab">時間 <span class="ed-lab-hint">每一家同一個開始時間；整張的長度取最久的那一家</span></span>
+      <div class="ed-time"><input id="sbS" type="time" step="300" value="${T(card.s)}" aria-label="開始時間（整張卡片一起改）">
+        <span class="ed-arrow">→</span><span class="ed-endbox" id="sbEnd" aria-label="離開時間（自動算）"></span>
+        <span class="ed-len">
+          <button type="button" class="step" data-d="-15" aria-label="少 15 分鐘"><i class="ti ti-minus"></i></button>
+          <span class="ed-dur" id="sbDurTxt"></span>
+          <button type="button" class="step" data-d="15" aria-label="多 15 分鐘"><i class="ti ti-plus"></i></button></span></div>
+      <div><div class="chips sm" id="sbDur">${[30, 60, 90, 120, 180].map(d => `<button type="button" class="chip" data-v="${d}">${durLabel(d)}</button>`).join('')}</div></div></div>
     <label class="ed-field"><span class="ed-lab">補充資訊</span>
       <input id="sbInfo" type="text" value="${esc(sub.info)}" placeholder="例如：每日 10:00–23:00" autocomplete="off"></label>`}
     <label class="ed-field"><span class="ed-lab">地圖 <span class="ed-lab-hint">貼上 Google 地圖的分享連結最準確</span></span>
@@ -3130,9 +3172,9 @@ function openSubEditor(cardId, kind, idx, fromCand) {
   const $ = id => sheet.querySelector('#' + id);
   const refresh = () => {
     $('sbMapStatus').innerHTML = mapStatusHtml($('sbMap').value.trim(), $('sbName').value.trim());
-    if (!isStop) return;
-    $('sbEnd').textContent = clock(($('sbS').value ? fromInput($('sbS').value) : m(sub.s)) + sed.dur);
     $('sbDurTxt').textContent = durLabel(sed.dur);
+    sheet.querySelectorAll('#sbDur .chip').forEach(c => c.classList.toggle('on', +c.dataset.v === sed.dur));
+    $('sbEnd').textContent = clock(($('sbS').value ? fromInput($('sbS').value) : m(isStop ? sub.s : card.s)) + sed.dur);
     sheet.querySelectorAll('#sbDur .chip').forEach(c => c.classList.toggle('on', +c.dataset.v === sed.dur));
   };
   ['sbName', 'sbMap', 'sbS'].forEach(id => $(id)?.addEventListener('input', () => { $('sbNameErr').hidden = true; refresh(); }));
@@ -3163,8 +3205,12 @@ function saveSub() {
     Object.assign(sub, { s: hhmm(sMin), dur: sed.dur, orig: $('sbSub').value.trim(), area: $('sbArea').value.trim(), desc: $('sbDesc').value.trim() });
     delete sub.info;   // 從備選帶進來的提醒已經併進筆記摘要，一站沒有這個欄位
   } else {
-    Object.assign(sub, { desc: $('sbSub').value.trim(), info: $('sbInfo').value.trim() });
-    if (sed.prefill) { delete sub.s; delete sub.dur; }
+    Object.assign(sub, { desc: $('sbSub').value.trim(), info: $('sbInfo').value.trim(), dur: sed.dur });
+    if (sed.prefill) delete sub.s;
+    // 改了開始時間＝整張卡片一起移動（多選一每一家同一個開始時間）
+    const sMin = $('sbS').value ? fromInput($('sbS').value) : m(card.s);
+    if (sMin + sed.dur > DAY_END) { $('sbErr').textContent = '最晚只能排到凌晨 05:00'; $('sbErr').hidden = false; return; }
+    if (hhmm(sMin) !== card.s) { const len = m(card.e) - m(card.s); card.s = hhmm(sMin); card.e = hhmm(Math.min(sMin + len, DAY_END)); }
   }
   if (sed.isNew) list.push(sub); else list[sed.idx] = sub;
   let note = sed.isNew ? (isStop ? '已新增一站' : '已新增選項') : '已儲存';
@@ -3175,8 +3221,15 @@ function saveSub() {
   }
   if (isStop) {
     list.sort((a, b) => m(a.s) - m(b.s));
+    // 改了某一站的時間：後面的站如果跟前一站重疊（被擠到），就往後順延到前一站結束
+    let pushed = 0;
+    for (let i = 1; i < list.length; i++) {
+      const prevEnd = m(list[i - 1].s) + list[i - 1].dur;
+      if (m(list[i].s) < prevEnd) { list[i].s = hhmm(Math.min(prevEnd, DAY_END - list[i].dur)); pushed++; }
+    }
+    if (pushed) note += `，後面 ${pushed} 站往後順延`;
     if (fitGroup(card)) note += `，區塊時間調整為 ${T(card.s)}–${T(card.e)}`;
-  }
+  } else if (fitPick(card)) note += `，時段調整為 ${T(card.s)}–${T(card.e)}`;
   saveData(); closeSheet(); renderPage(current); toast(note, '復原', () => undoSnap(snap), UNDO_MS);
 }
 function deleteSub() {
