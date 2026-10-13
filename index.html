@@ -296,6 +296,11 @@ html.on-map:not(.sheet-lock),html.on-map:not(.sheet-lock) body{background:#f4f0e
   scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
 .map-strip::-webkit-scrollbar{display:none}
 .map-strip:empty{display:none}
+/* 備選的地圖：底下是類型標籤（不是一家一家的卡片），點了地圖只顯示那一類 */
+.map-strip.types{scroll-snap-type:none;align-items:center;gap:6px;padding-bottom:8px}
+.map-strip.types .chip{flex:none;height:32px;padding:0 13px;font-size:13px;box-shadow:0 2px 8px rgba(60,40,20,.12);border-color:var(--line)}
+.map-strip.types .chip small{margin-left:4px;font-size:11px;opacity:.7}
+.pin[hidden]{display:none}
 .ms-card{flex:none;width:min(240px,72vw);scroll-snap-align:center;display:flex;align-items:flex-start;gap:8px;padding:9px 10px;border:1px solid var(--line);
   border-radius:12px;background:#fff;box-shadow:0 2px 8px rgba(60,40,20,.12);font:inherit;color:var(--text);text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s}
 .ms-card.on{border-color:var(--c-fg);box-shadow:0 3px 12px rgba(60,40,20,.2)}
@@ -1691,7 +1696,7 @@ function mapPoints(page) {
   return pts;
 }
 const mapStrip = document.getElementById('mapStrip');
-let mapPts = [], mapActive = -1, stripAuto = 0;
+let mapPts = [], mapActive = -1, stripAuto = 0;   // 備選地圖顯示哪一類＝清單上選的那一類（candView.f，兩邊連動）
 const openPt = pt => pt.kind ? openSubInfo(pt.id, pt.kind, pt.idx) : openCardInfo(pt.id);
 // 選中第 i 個點：圖釘放大、卡片加框；pan＝地圖移過去，scroll＝卡片列捲到那張
 function mapFocus(i, { pan = true, scroll = true } = {}) {
@@ -1700,9 +1705,11 @@ function mapFocus(i, { pan = true, scroll = true } = {}) {
   mapPins.forEach((v, k) => v.el.classList.toggle('on', k === i));
   mapStrip.querySelectorAll('.ms-card').forEach((c, k) => c.classList.toggle('on', k === i));
   if (pan && gmap) { if (gmap.getZoom() < 15) gmap.setZoom(15); gmap.panTo(mapPts[i].p); }   // 拉得太遠時順便放大到看得清楚那一區
-  if (scroll) { const c = mapStrip.children[i]; if (c) { stripAuto = Date.now(); mapStrip.scrollTo({ left: c.offsetLeft - (mapStrip.clientWidth - c.offsetWidth) / 2, behavior: 'smooth' }); } }
+  if (scroll && isDay(current)) { const c = mapStrip.children[i]; if (c) { stripAuto = Date.now(); mapStrip.scrollTo({ left: c.offsetLeft - (mapStrip.clientWidth - c.offsetWidth) / 2, behavior: 'smooth' }); } }
 }
 mapStrip.addEventListener('click', e => {
+  const t = e.target.closest('.chip[data-v]');
+  if (t) { candView.f = t.dataset.v; try { localStorage.setItem(CAND_VIEW_KEY, JSON.stringify(candView)); } catch {} showMapType(); return; }
   const c = e.target.closest('.ms-card'); if (!c) return;
   const i = +c.dataset.i;
   if (i === mapActive) openPt(mapPts[i]); else mapFocus(i);
@@ -1712,13 +1719,27 @@ let stripTimer = 0;
 mapStrip.addEventListener('scroll', () => {
   clearTimeout(stripTimer);
   stripTimer = setTimeout(() => {
-    if (Date.now() - stripAuto < 600) return;   // 程式自己捲的，不用再處理
+    if (Date.now() - stripAuto < 600 || !isDay(current)) return;   // 程式自己捲的不用再處理；備選底下是類型標籤，不是卡片
     const mid = mapStrip.scrollLeft + mapStrip.clientWidth / 2;
     let best = -1, d = Infinity;
     [...mapStrip.children].forEach((c, k) => { const x = Math.abs(c.offsetLeft + c.offsetWidth / 2 - mid); if (x < d) { d = x; best = k; } });
     if (best >= 0 && best !== mapActive) mapFocus(best, { scroll: false });
   }, 140);
 }, { passive: true });
+// 備選地圖：只顯示選中類型的圖釘，地圖縮放到剛好看得到它們
+function showMapType() {
+  const f = candView.f;
+  mapStrip.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.v === f));
+  const on = [];
+  mapPins.forEach((v, i) => { const show = !f || mapPts[i].cls === f; v.el.hidden = !show; if (show) on.push(mapPts[i]); });
+  mapMsg.textContent = f && !on.length ? '這一類的備選還沒有標上位置' : '';
+  const sel = mapStrip.querySelector('.chip.on');
+  if (sel && sel.offsetLeft + sel.offsetWidth > mapStrip.clientWidth) mapStrip.scrollLeft = sel.offsetLeft - (mapStrip.clientWidth - sel.offsetWidth) / 2;
+  if (!gmap || !on.length) return;
+  if (on.length === 1) { gmap.setCenter(on[0].p); gmap.setZoom(15); return; }
+  const b = new google.maps.LatLngBounds(); on.forEach(p => b.extend(p.p));
+  gmap.fitBounds(b, { top: 40, bottom: 60, left: 30, right: 60 });
+}
 async function drawMap(page) {
   document.documentElement.style.setProperty('--hd', document.querySelector('header').offsetHeight + 'px');
   const pts = mapPoints(page), day = isDay(page);
@@ -1740,7 +1761,7 @@ async function drawMap(page) {
   }
   mapPins.forEach(p => p.setMap(null)); mapPins = [];
   if (mapLine) { mapLine.setMap(null); mapLine = null; }
-  mapStrip.innerHTML = ''; mapView.classList.remove('has-strip'); mapPts = pts; mapActive = -1;
+  mapStrip.innerHTML = ''; mapStrip.classList.remove('types'); mapView.classList.remove('has-strip'); mapPts = pts; mapActive = -1;
   if (!pts.length) { mapMsg.textContent = day ? '這一天還沒有標上位置的地點' : '備選還沒有標上位置的地點'; gmap.setCenter({ lat: 18.7883, lng: 98.9853 }); gmap.setZoom(13); return; }
   for (const pt of pts) {
     const el = document.createElement('button');
@@ -1750,6 +1771,17 @@ async function drawMap(page) {
     const i = mapPins.length;
     el.addEventListener('click', e => { e.stopPropagation(); mapFocus(i, { pan: false, scroll: true }); openPt(pt); });
     const v = new PinView(pt, el); v.setMap(gmap); mapPins.push(v);
+  }
+  // 備選：底下是類型標籤，點了地圖只留那一類的圖釘
+  if (!day) {
+    const all = DATA.cand || [], kinds = TYPES.filter(([k]) => all.some(c => (c.cls || 'eat') === k));   // 跟清單上的類型標籤一樣
+    if (candView.f && !kinds.some(([k]) => k === candView.f)) candView.f = '';
+    mapStrip.classList.add('types');
+    mapStrip.innerHTML = `<button type="button" class="chip" data-v="">全部<small>${pts.length}</small></button>` +
+      kinds.map(([k, n]) => `<button type="button" class="chip ${k}" data-v="${k}">${n}<small>${pts.filter(p => p.cls === k).length}</small></button>`).join('');
+    mapView.classList.add('has-strip'); mapStrip.scrollLeft = 0;
+    showMapType();
+    return;
   }
   // 底部卡片列：一個點一張；點一下移到那裡，再點一次（或點已經選中的）看資訊
   mapStrip.innerHTML = pts.map((pt, i) => `<button type="button" class="ms-card ${pt.cls}${pt.alt ? ' alt' : ''}${day ? '' : ' nonum'}" data-i="${i}">
