@@ -385,6 +385,11 @@ html.on-map:not(.sheet-lock),html.on-map:not(.sheet-lock) body{background:#f4f0e
 .ed-field{display:block;margin-top:16px}
 .ed-lab{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px}
 .ed-lab-hint{font-weight:400;margin-left:4px}
+.ed-lab-row{display:flex;align-items:center;gap:8px}
+.ed-lab-row .ed-lab{flex:1;min-width:0}
+.swap-btn{flex:none;display:inline-flex;align-items:center;gap:4px;margin:-6px -6px 0 0;padding:4px 8px;border:0;border-radius:999px;background:none;color:var(--accent-fg);font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.swap-btn.open,.swap-btn:active{background:var(--accent-bg)}
+#edSwapWrap .cand-drop{margin:0 0 8px}
 .map-status{margin-top:6px;font-size:13px;line-height:1.5;color:var(--text2)}
 .map-status i{vertical-align:-1px}
 .map-status .ok{color:#3F5E3A;font-weight:600}
@@ -643,6 +648,7 @@ try {
     DATA = c.data; BASE = c.base; NOTES = c.notes || {}; CHECKS = c.checks || []; MAPS_KEY = c.mapsKey || ''; loaded = true; resumeDraft = c.draft || null;
     DATA.cand = DATA.cand || [];
     noteQueue = c.noteQueue || {}; noteOld = c.noteOld || {};
+    fixAlts();
   }
 } catch {}
 function cache() { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data: DATA, base: BASE, notes: NOTES, checks: CHECKS, mapsKey: MAPS_KEY, draft: editStart, noteQueue, noteOld })); } catch {} }
@@ -684,15 +690,32 @@ function applyServer(r) {
     NOTES[k] = { orig: n.orig, points: n.points && n.points.length ? n.points : undefined, links: n.links && n.links.length ? n.links : undefined,
                  full: n.full || undefined, photo: n.photo || undefined };
   }
+  fixAlts();
   CHECKS = r.checklist || [];
   MAPS_KEY = r.mapsKey || '';
   loaded = true; loadErr = false; cache();
 }
 
 // 比較內容時：空字串、false、空清單都當成「沒有」
-const ITEM_KEYS = ['s', 'e', 'cls', 't', 'desc', 'hours', 'map', 'loc', 'pid', 'travel', 'booked', 'alert', 'mine', 'note', 'group', 'stops', 'alts'];
-const SUB_KEYS = ['s', 'dur', 'name', 'short', 'orig', 'area', 'desc', 'info', 'map', 'loc', 'pid', 'mine', 'note'];
+const ITEM_KEYS = ['s', 'e', 'cls', 't', 'desc', 'hours', 'map', 'loc', 'pid', 'orig', 'area', 'short', 'travel', 'booked', 'alert', 'mine', 'note', 'group', 'stops', 'alts'];
+const SUB_KEYS = ['s', 'dur', 'name', 'short', 'orig', 'area', 'desc', 'cls', 'hours', 'alert', 'map', 'loc', 'pid', 'mine', 'note'];
 const isEmpty = v => v === '' || v == null || v === false;
+// 一家店的資料：不管是一張卡片、合併區塊的一站、還是多選一的選項都一樣，互相轉換時整份帶著走
+const PLACE_KEYS = ['desc', 'cls', 'hours', 'alert', 'map', 'loc', 'pid', 'mine', 'note', 'orig', 'area', 'short'];
+function placeOf(x, cls) {
+  const o = { name: x.t ?? x.name };
+  PLACE_KEYS.forEach(k => { if (!isEmpty(x[k])) o[k] = x[k]; });
+  if (o.desc === PENDING) delete o.desc;
+  if (!o.alert && x.info) o.alert = x.info;   // 舊資料：選項的提醒叫 info
+  if (!o.cls && cls) o.cls = cls;             // 一站、選項沒設類型：用外面那張卡片的
+  if (!o.note && NOTES[o.name]) o.note = o.name;
+  return o;
+}
+// 店家資料做成一張獨立的卡片（extra：時間等卡片才有的欄位）
+const cardOf = (p, extra) => { const { name, ...rest } = p;
+  return { id: uid(), t: name, desc: '', cls: 'other', map: '', loc: '', pid: '', travel: '', booked: false, alert: '', mine: '', note: '', ...rest, ...extra }; };
+// 舊資料（手機裡存的）：選項的 info 改叫 alert
+function fixAlts() { for (const k of ALL_KEYS) for (const it of DATA[k] || []) for (const a of it.alts || []) if ('info' in a) { if (!a.alert && a.info) a.alert = a.info; delete a.info; } }
 const canonSub = x => { const o = {}; SUB_KEYS.forEach(k => { if (!isEmpty(x[k])) o[k] = k === 'dur' ? +x[k] : x[k]; }); return o; };
 const canon = it => {
   const o = {};
@@ -1129,13 +1152,13 @@ function renderCards(items) {
         ? `<div class="cap">這幾間都可以去，到時候再一起選一間</div>${it.alts.map((a, i) => `
           <div class="stop" data-kind="alt" data-idx="${i}"><div class="num pick"></div>
             <div style="flex:1;min-width:0"><div class="n">${esc(a.name)}</div>${a.desc ? `<div class="o">${esc(a.desc)}</div>` : ''}
-              ${a.info || +a.dur ? `<div class="m">${+a.dur ? `<i class="ti ti-clock"></i> ${T(it.s)} · ${durLabel(+a.dur)}` : ''}${a.info && +a.dur ? '　' : ''}${esc(a.info || '')}</div>` : ''}</div>
+              ${a.alert || +a.dur ? `<div class="m">${+a.dur ? `<i class="ti ti-clock"></i> ${T(it.s)} · ${durLabel(+a.dur)}` : ''}${a.alert && +a.dur ? '　' : ''}${esc(a.alert || '')}</div>` : ''}</div>
             ${a.map ? navBtn(a.map, a.name) : ''}${subEditIc}
           </div>`).join('')}<button type="button" class="add-sub" data-kind="alt"><i class="ti ti-plus"></i> 新增選項</button>`
         : `${it.stops.map((st, i) => `
           <div class="stop${i < it.stops.length - 1 ? ' chain' : ''}" data-kind="stop" data-idx="${i}"><div class="num">${i + 1}</div>
             <div style="flex:1;min-width:0"><div class="n">${esc(st.name)}</div>${st.orig ? `<div class="o">${esc(st.orig)}</div>` : ''}${st.desc ? `<div class="o">${esc(st.desc)}</div>` : ''}
-              <div class="m"><i class="ti ti-clock"></i> ${T(st.s)} · ${durLabel(st.dur)}${st.area ? `　<i class="ti ti-map-pin"></i> ${esc(st.area)}` : ''}</div></div>
+              <div class="m"><i class="ti ti-clock"></i> ${T(st.s)} · ${durLabel(st.dur)}${st.area ? `　<i class="ti ti-map-pin"></i> ${esc(st.area)}` : ''}${st.alert ? `　${esc(st.alert)}` : ''}</div></div>
             ${st.map ? navBtn(st.map, st.name) : ''}${subEditIc}
           </div>`).join('')}<button type="button" class="add-sub" data-kind="stop"><i class="ti ti-plus"></i> 新增一站</button>`;
       g.innerHTML = `
@@ -1858,7 +1881,7 @@ function openSubInfo(id, kind, i) {
   const sub = subList(findItem(id)[1], kind)[i]; if (!sub) return;
   const info = NOTES[subNoteKey(sub)], meta = [];
   if (kind === 'stop') meta.push(['ti-clock', `${T(sub.s)} · ${durLabel(sub.dur)}${sub.area ? `　${sub.area}` : ''}`]);
-  if (sub.info) meta.push(['ti-info-circle', sub.info]);
+  if (sub.alert) meta.push(['ti-alert-triangle', sub.alert]);
   openNote(sub.name, { ...info, orig: sub.orig || info?.orig }, sub.mine || info?.mine, sub.map, { desc: sub.desc, meta });
 }
 const findItem = id => { for (const k of ALL_KEYS) { if (!DATA[k]) continue; const it = DATA[k].find(x => x.id === id); if (it) return [k, it]; } return [null, null]; };
@@ -2201,7 +2224,7 @@ function mergeInto(id, cardId, idx, before) {
   if (!src || !card) return false;
   if (src.booked && !confirm(`「${src.t}」是已訂位的行程，確定要放進「${card.t}」嗎？`)) return false;
   const snapshot = before || JSON.parse(JSON.stringify(list));
-  const base = { name: src.t, desc: src.desc || '', map: src.map, loc: src.loc || '', pid: src.pid || '', mine: src.mine, note: src.note || (NOTES[src.t] ? src.t : '') };
+  const base = placeOf(src);
   if (card.group) {
     // 插在第 idx 站：接在前一站後面開始，後面的站如果被擠到就往後順延
     const stops = card.stops, dur = m(src.e) - m(src.s);
@@ -2215,7 +2238,7 @@ function mergeInto(id, cardId, idx, before) {
     fitGroup(card);
   } else {
     const timed = card.alts.some(x => +x.dur);
-    card.alts.splice(idx, 0, { ...base, desc: src.desc || '', info: src.alert || '', dur: m(src.e) - m(src.s) });
+    card.alts.splice(idx, 0, { ...base, dur: m(src.e) - m(src.s) });
     if (timed) fitPick(card);   // 其他選項已經有停留時間：長度一樣取最久的
   }
   list.splice(list.indexOf(src), 1);
@@ -2233,8 +2256,7 @@ function pullOut(sub, at, intoId, intoIdx) {
   const subs = sub.kind === 'stop' ? card.stops : card.alts, x = subs[sub.idx];
   const dur = sub.kind === 'stop' ? x.dur : +x.dur || m(card.e) - m(card.s);
   const start = at ?? (sub.kind === 'stop' ? m(x.s) : m(card.s));
-  const it = { id: uid(), t: x.name, desc: x.desc || '', cls: card.cls, s: hhmm(start), e: hhmm(Math.min(start + dur, DAY_END)),
-    map: x.map || '', loc: x.loc || '', pid: x.pid || '', mine: x.mine || '', note: x.note || '', alert: sub.kind === 'alt' ? x.info || '' : '', travel: '' };
+  const it = cardOf(placeOf(x, card.cls), { s: hhmm(start), e: hhmm(Math.min(start + dur, DAY_END)) });
   subs.splice(sub.idx, 1);
   let gone = '';
   if (!subs.length) { list.splice(list.indexOf(card), 1); gone = `，「${card.t}」已經空了，一起拿掉`; }   // 最後一個被拉走：外面那張卡片也拿掉
@@ -2386,14 +2408,17 @@ const typeChips = (list, sel, cls) => {
 };
 const candDropHtml = cands => `
   <button type="button" class="btn ghost cand-open" aria-expanded="false"><i class="ti ti-list-search"></i> 從備選清單挑選<span class="cnt">${cands.length}</span><i class="ti ti-chevron-down cand-chev"></i></button>
+  ${candListHtml(cands)}`;
+const candListHtml = cands => `
   <div class="cand-drop" hidden>
     ${cands.length > 5 ? typeChips(cands, '', 'cp-filter') : ''}
     <div class="cand-pick">${cands.map(c => `<button type="button" class="cp-item ${c.cls || 'eat'}" data-id="${c.id}" data-cls="${c.cls || 'eat'}">
       <span class="cp-dot"></span><span class="cp-main"><span class="cp-name">${esc(c.t)}</span>${c.desc && c.desc !== PENDING ? `<span class="cp-desc">${esc(c.desc)}</span>` : ''}</span>
       <span class="cp-dur">${durLabel(m(c.e) - m(c.s))}</span></button>`).join('')}</div></div>`;
-function wireCandDrop(wrap, onPick) {
+function wireCandDrop(wrap, onPick, btn) {
   if (!wrap) return;
-  const btn = wrap.querySelector('.cand-open'), drop = wrap.querySelector('.cand-drop');
+  btn = btn || wrap.querySelector('.cand-open');
+  const drop = wrap.querySelector('.cand-drop');
   btn.addEventListener('click', () => {
     const open = drop.hidden;
     drop.hidden = !open; btn.setAttribute('aria-expanded', open); btn.classList.toggle('open', open);
@@ -2413,7 +2438,8 @@ function wireCandDrop(wrap, onPick) {
 }
 
 let ed = null;   // 正在編輯的內容
-function openEditor(id, startAt, toDay) {
+// replaceId：從備選替換——帶入備選 id 的資料，排在 replaceId 那張卡片的時段，存檔後那張移到備選
+function openEditor(id, startAt, toDay, replaceId) {
   const [, it] = id ? findItem(id) : [null, null];
   ed = it
     ? { id, isNew: false, noteKey: it.note || it.t, t: it.t, desc: it.desc || '', cls: it.cls, s: it.s, dur: m(it.e) - m(it.s), map: it.map || '', travel: it.travel || '',
@@ -2422,14 +2448,21 @@ function openEditor(id, startAt, toDay) {
     : { id: null, isNew: true, noteKey: '', t: '', desc: '', cls: 'eat', s: startAt, dur: 60, map: '', travel: '', booked: false, alert: '', mine: '', group: false, pick: false, kind: 'one', day: current, fromDay: current };
   // 從備選排進某一天：帶入備選的資料，時間換成新增時點的那個時間
   if (it && toDay) Object.assign(ed, { day: toDay, s: startAt, fromCand: true });
+  // 從備選替換：時段沿用被換掉的那張（開始、結束都一樣），交通時間不沿用（路線變了）
+  const old = replaceId ? findItem(replaceId)[1] : null;
+  if (old) Object.assign(ed, { replaceId, oldT: old.t, s: old.s, dur: m(old.e) - m(old.s), travel: '' });
+  // 一般的單一地點卡片（或正在替換中）可以從備選替換
+  const swapFrom = old || (it && !toDay && !ed.group && !ed.pick && isDay(ed.day) ? it : null);
+  const swaps = swapFrom ? (DATA.cand || []).filter(c => c.id !== id) : [];
   // 多選一的選項有設停留時間：整張的長度取最久的那一家，外層不能改長度
   ed.fixedLen = ed.group || (ed.pick && (it?.alts || []).some(a => +a.dur > 0));
   const durs = [30, 60, 90, 120, 180];
   const cands = ed.isNew && isDay(current) ? DATA.cand || [] : [];
   openSheet(`
-    <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">${ed.isNew ? '新增行程' : ed.fromCand ? '從備選排入' : '編輯行程'}</div>
+    <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">${ed.isNew ? '新增行程' : old ? '從備選替換' : ed.fromCand ? '從備選排入' : '編輯行程'}</div>
       <div class="sh-sub">${current === 'cand' ? '備選景點' : `${dayInfo(current).date}．${esc(dayInfo(current).zh)}`}</div></div>
       <button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
+    ${old ? `<div class="ed-hint"><i class="ti ti-arrows-exchange"></i> 儲存後，「${esc(old.t)}」會移到備選</div>` : ''}
     ${ed.booked ? '<div class="ed-lock"><i class="ti ti-lock"></i> 這是已訂位的行程，改時間前請先確認</div>' : ''}
     ${ed.group || ed.pick ? `
     <div class="ed-field"><span class="ed-lab">卡片樣式</span><div class="seg" id="edConv" data-i="${ed.group ? 1 : 2}"><span class="seg-thumb"></span>
@@ -2447,8 +2480,10 @@ function openEditor(id, startAt, toDay) {
         <input id="edGT" type="text" value="" placeholder="" autocomplete="off"></label>
       <div class="err" id="edGTErr" hidden>請輸入卡片標題</div>
       <div class="ed-hint" id="edKindHint"></div></div>`}
-    <label class="ed-field"><span class="ed-lab" id="edTLab">名稱</span>
-      <input id="edT" type="text" value="${esc(ed.t)}" placeholder="例如：Ristr8to 拉花咖啡" autocomplete="off"></label>
+    <${swaps.length ? 'div' : 'label'} class="ed-field">${swaps.length ? `<span class="ed-lab-row"><span class="ed-lab" id="edTLab">名稱</span>
+      <button type="button" class="swap-btn" id="edSwapBtn" aria-expanded="false"><i class="ti ti-arrows-exchange"></i> 從備選替換</button></span>` : '<span class="ed-lab" id="edTLab">名稱</span>'}
+      ${swaps.length ? `<div id="edSwapWrap">${candListHtml(swaps)}</div>` : ''}
+      <input id="edT" type="text" aria-label="名稱" value="${esc(ed.t)}" placeholder="例如：Ristr8to 拉花咖啡" autocomplete="off"></${swaps.length ? 'div' : 'label'}>
     <div class="err" id="edTErr" hidden>請輸入名稱</div>
     ${ed.group || ed.pick ? '' : `
     <label class="ed-field"><span class="ed-lab">描述 <span class="ed-lab-hint">顯示在卡片上，半小時左右的小卡片不顯示</span></span>
@@ -2456,7 +2491,7 @@ function openEditor(id, startAt, toDay) {
     ${ed.group ? '<div class="ed-hint"><i class="ti ti-info-circle"></i> 這是合併區塊。要改裡面的店家，請展開後直接點那一家</div>' : `
     <div class="ed-field"><span class="ed-lab">類型</span><div class="chips" id="edCls">
       ${TYPES.map(([k, n]) => `<button type="button" class="chip ${k}${k === ed.cls ? ' on' : ''}" data-v="${k}">${n}</button>`).join('')}</div></div>`}
-    <div class="ed-field"><span class="ed-lab">日期 <span class="ed-lab-hint">選別天就搬過去，時間不變</span></span>
+    <div class="ed-field"${old ? ' hidden' : ''}><span class="ed-lab">日期 <span class="ed-lab-hint">選別天就搬過去，時間不變</span></span>
       <div class="chips sm day-chips" id="edDay">${ALL_KEYS.map(k => `<button type="button" class="chip${k === ed.day ? ' on' : ''}${k === 'cand' ? ' cand' : ''}" data-v="${k}">${k === 'cand' ? '備選' : dayNum(k)}</button>`).join('')}</div></div>
     <div class="ed-field"><span class="ed-lab">時間</span>
       <div class="ed-time"><input id="edS" type="time" step="300" value="${T(ed.s)}" aria-label="開始時間">
@@ -2491,9 +2526,9 @@ function openEditor(id, startAt, toDay) {
       <textarea id="edMine" rows="3" placeholder="想提醒大家的事">${esc(ed.mine)}</textarea></label>
     ${fullNoteField('edFull', ed.noteKey)}`}
     <div class="ed-actions">
-      ${ed.isNew ? '' : '<button type="button" class="btn ghost danger" id="edDel"><i class="ti ti-trash"></i> 刪除</button>'}
+      ${ed.isNew || old ? '' : '<button type="button" class="btn ghost danger" id="edDel"><i class="ti ti-trash"></i> 刪除</button>'}
       <button type="button" class="btn ghost ed-cancel">取消</button>
-      <button type="button" class="btn primary" id="edSave">${ed.isNew ? '新增' : ed.fromCand ? '排入' : '儲存'}</button>
+      <button type="button" class="btn primary" id="edSave">${ed.isNew ? '新增' : old ? '替換' : ed.fromCand ? '排入' : '儲存'}</button>
     </div>`, ed.isNew ? '#edT' : '.sh-close');
   wireEditor();
 }
@@ -2547,6 +2582,20 @@ function wireEditor() {
   });
   // 從備選清單挑選：挑了就把那張備選帶進這個面板
   wireCandDrop($('edCandWrap'), id => openEditor(id, $('edS').value ? hhmm(fromInput($('edS').value)) : ed.s, current));
+  // 從備選替換：已訂位的先確認；改過欄位的提醒修改不會保留
+  const sig = () => [...sheet.querySelectorAll('input,textarea')].map(x => x.type === 'checkbox' ? x.checked : x.value).join('\u0001') + ed.cls + ed.dur;
+  const sig0 = sig(), rid = ed.replaceId || ed.id;
+  if ($('edSwapBtn')) $('edSwapBtn').addEventListener('click', e => {
+    e.preventDefault();   // 按鈕在 label 裡，不要順便把游標放進名稱
+    const b = $('edSwapBtn');
+    if (!b.classList.contains('open') && !ed.replaceId && ed.booked && !confirm('這是已訂位的行程，確定要換掉嗎？')) return;
+    b.classList.toggle('open'); b.setAttribute('aria-expanded', b.classList.contains('open'));
+    $('edSwapWrap').querySelector('.cand-drop').hidden = !b.classList.contains('open');
+  });
+  wireCandDrop($('edSwapWrap'), id => {
+    if (sig() !== sig0 && !confirm('剛剛在這裡的修改不會保留，確定要換嗎？')) return;
+    openEditor(id, null, findItem(rid)[0], rid);
+  }, { addEventListener() {} });
   $('edDay').addEventListener('click', e => {
     const c = e.target.closest('.chip'); if (!c) return;
     ed.day = c.dataset.v;
@@ -2590,14 +2639,15 @@ function convertCard(id, to, snap) {
   if (to === 'split') {
     const cards = subs.map((x, i) => {
       const s = it.group ? m(x.s) : m(it.s), e = it.group ? m(x.s) + x.dur : +x.dur ? m(it.s) + +x.dur : m(it.e);
-      return { id: uid(), t: x.name, desc: x.desc || '', cls: it.cls, s: hhmm(s), e: hhmm(Math.min(Math.max(e, s + 5), DAY_END)), map: x.map || '', loc: x.loc || '', pid: x.pid || '',
-        travel: i === 0 ? it.travel || '' : '', booked: i === 0 && !!it.booked, alert: it.group ? (i === 0 ? it.alert || '' : '') : x.info || '', mine: x.mine || '', note: x.note || '' };
+      const p = placeOf(x, it.cls);
+      if (!p.alert && i === 0 && it.alert) p.alert = it.alert;   // 整張卡片的提醒給第一張
+      return cardOf(p, { s: hhmm(s), e: hhmm(Math.min(Math.max(e, s + 5), DAY_END)), travel: i === 0 ? it.travel || '' : '', booked: i === 0 && !!it.booked });
     });
     list.splice(list.indexOf(it), 1, ...cards);
     list.sort((a, b) => m(a.s) - m(b.s));
     msg = `已把「${it.t}」拆成 ${cards.length} 張卡片`;
   } else if (to === 'pick') {
-    it.alts = subs.map(x => ({ name: x.name, desc: x.desc || '', info: '', dur: +x.dur || 0, map: x.map || '', loc: x.loc || '', pid: x.pid || '', mine: x.mine || '', note: x.note || '' }));
+    it.alts = subs.map(x => ({ ...placeOf(x), dur: +x.dur || 0 }));
     // 幾家選一家去：時段取停留最久的那一家（從原本的開始時間算），不是全部加起來
     const longest = Math.max(15, ...subs.map(x => +x.dur || 0));
     it.e = hhmm(Math.min(m(it.s) + longest, DAY_END));
@@ -2606,8 +2656,7 @@ function convertCard(id, to, snap) {
   } else {
     const n = Math.max(1, subs.length), dur = Math.max(5, Math.round((m(it.e) - m(it.s)) / n / 5) * 5);
     let at = m(it.s);   // 有各自的停留時間就照著排，沒有就平分
-    it.stops = subs.map(x => { const d = +x.dur || dur, st = { name: x.name, desc: x.desc || '', map: x.map || '', loc: x.loc || '', pid: x.pid || '', mine: x.mine || '', note: x.note || '',
-      s: hhmm(Math.min(at, DAY_END - d)), dur: d }; at += d; return st; });
+    it.stops = subs.map(x => { const d = +x.dur || dur, st = { ...placeOf(x), s: hhmm(Math.min(at, DAY_END - d)), dur: d }; at += d; return st; });
     delete it.alts; it.group = true; fitGroup(it);
     msg = `「${it.t}」改成多個地點，每站 ${dur} 分`;
   }
@@ -2621,6 +2670,13 @@ function undoSnap(snap) {
   ALL_KEYS.forEach(k => { DATA[k] = snap.data[k]; });
   for (const [k, v] of Object.entries(snap.notes)) if (JSON.stringify(NOTES[k]) !== JSON.stringify(v)) { NOTES[k] = v; noteQueue[k] = ++noteSeq; }   // 筆記改回原本的樣子
   saveData('復原'); renderPage(current); updateHeader(current); toast('已復原');
+}
+// 從備選替換：被換掉的那張整張搬到備選（內容、筆記都留著，時間不動）
+function swapOut() {
+  if (!ed.replaceId) return false;
+  const [day] = findItem(ed.replaceId);
+  if (day && day !== 'cand') moveDay(ed.replaceId, day, 'cand');
+  return true;
 }
 function saveEditor() {
   const snap = takeSnap(), undo = () => undoSnap(snap);
@@ -2652,12 +2708,12 @@ function saveEditor() {
     // 這張卡片變成第一站／第一個選項，卡片本身改用新的標題
     const it = ed.isNew ? { id: uid() } : findItem(ed.id)[1];
     if (!ed.isNew && push && delta) laterItems().forEach(x => { x.s = hhmm(m(x.s) + delta); x.e = hhmm(m(x.e) + delta); });
-    const first = { name: t, desc: fields.desc, map: fields.map, mine: fields.mine, note: it.note || (NOTES[t] ? t : ''),
-      loc: fields.loc ?? it.loc ?? '', pid: fields.pid ?? it.pid ?? '' };
-    Object.assign(it, fields, { t: gt, desc: '', map: '', mine: '', note: '', loc: '', pid: '' });
+    const first = placeOf({ ...it, ...fields, t });   // 店家資料整份變成第一站／第一個選項（提醒、營業時間都是那一家店的）
+    Object.assign(it, fields, { t: gt }); PLACE_KEYS.filter(k => k !== 'cls').forEach(k => it[k] = '');
     if (ed.kind === 'group') { it.group = true; it.stops = [{ ...first, s: fields.s, dur: ed.dur }]; delete it.alts; }
-    else { it.alts = [{ ...first, info: fields.alert }]; it.alert = ''; }   // 「只收現金」這類提醒是那一家店的，跟著選項走
+    else it.alts = [{ ...first, dur: ed.dur }];
     if (ed.isNew) DATA[ed.day].push(it); else moveDay(it.id, ed.fromDay, ed.day);
+    swapOut();
     saveData(); closeSheet(); renderPage(current);
     toast(`已建立「${gt}」，展開後可以加入更多${ed.kind === 'group' ? '站' : '選項'}`, '復原', undo, UNDO_MS);
     return;
@@ -2670,6 +2726,8 @@ function saveEditor() {
     if (ed.group) { const shift = sMin - m(ed.orig.s); if (shift) findItem(ed.id)[1].stops.forEach(x => x.s = hhmm(m(x.s) + shift)); }
     Object.assign(findItem(ed.id)[1], fields);
     moveDay(ed.id, ed.fromDay, ed.day);
+    if (swapOut()) { saveData(`換成「${t}」`); closeSheet(); renderPage(current); updateHeader(current);
+      toast(`已把「${ed.oldT}」換成「${t}」，「${ed.oldT}」移到備選`, '復原', undo, UNDO_MS); return; }
     const cur = ed.group ? 'group' : ed.pick ? 'pick' : '';
     if (cur && ed.conv && ed.conv !== cur) { convertCard(ed.id, ed.conv, snap); return; }
   }
@@ -3108,27 +3166,31 @@ const mapStatusHtml = (v, name) => {
 };
 let sed = null;   // 正在編輯的店家
 // fromCand：從備選清單挑的那張備選 id，帶入它的資料；存好後從備選拿掉
-function openSubEditor(cardId, kind, idx, fromCand) {
-  const [, card] = findItem(cardId), list = subList(card, kind), isNew = idx == null;
+// replace：從備選替換第 idx 家——時間沿用原本那一家，存好後原本那一家變成一張備選卡片
+function openSubEditor(cardId, kind, idx, fromCand, replace) {
+  const [, card] = findItem(cardId), list = subList(card, kind), isNew = idx == null, old = replace ? list[idx] : null;
   const last = card.stops?.[card.stops.length - 1];
   const at = last ? hhmm(m(last.s) + last.dur) : card.s;
   const c = fromCand && (DATA.cand || []).find(x => x.id === fromCand);
   const area = c && kind === 'stop' ? /^位置：(.+)$/m.exec(c.mine || '') : null;   // 導入時寫的「位置：寧曼」→ 一站的區域欄位
   const sub = c
-    ? { name: c.t, desc: c.desc === PENDING ? '' : c.desc || '', info: c.alert || '', map: c.map || '', loc: c.loc || '', pid: c.pid || '', note: c.note || '', s: at, dur: m(c.e) - m(c.s),
-        area: area ? area[1].trim() : '',
-        mine: kind === 'stop' ? [(c.mine || '').replace(/^位置：.+$\n?/m, '').trim(), c.alert].filter(Boolean).join('\n') : c.mine || '' }   // 一站沒有提醒欄位，提醒併進筆記摘要
+    ? { ...placeOf(c), s: old ? old.s : at, dur: old ? old.dur : m(c.e) - m(c.s),
+        ...(area ? { area: area[1].trim(), mine: (c.mine || '').replace(/^位置：.+$\n?/m, '').trim() } : {}) }
     : isNew ? (kind === 'stop' ? { s: at, dur: 15, name: '' } : { name: '' }) : list[idx];
-  sed = { cardId, kind, idx, isNew, dur: +sub.dur || (kind === 'alt' ? m(card.e) - m(card.s) : 15), fromCand: c ? c.id : null, prefill: c ? sub : null };
+  sed = { cardId, kind, idx, isNew, dur: +sub.dur || (kind === 'alt' ? m(card.e) - m(card.s) : 15), fromCand: c ? c.id : null, prefill: c ? sub : null, replace: !!old, cls: sub.cls || card.cls };
+  const swaps = !isNew ? (DATA.cand || []).filter(x => x.id !== fromCand) : [];
   const isStop = kind === 'stop', nk = isNew && !c ? '' : subNoteKey(sub);
   const cands = isNew && !c ? DATA.cand || [] : [];
   openSheet(`
-    <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">${c ? '從備選加入' : isNew ? (isStop ? '新增一站' : '新增選項') : (isStop ? '編輯店家' : '編輯選項')}</div>
+    <div class="sh-head"><div style="flex:1;min-width:0"><div class="sh-title" id="shTitle">${old ? '從備選替換' : c ? '從備選加入' : isNew ? (isStop ? '新增一站' : '新增選項') : (isStop ? '編輯店家' : '編輯選項')}</div>
       <div class="sh-sub">${esc(card.t)}</div></div>
       <button class="sh-close" aria-label="關閉"><i class="ti ti-x"></i></button></div>
+    ${old ? `<div class="ed-hint"><i class="ti ti-arrows-exchange"></i> 儲存後，「${esc(old.name)}」會移到備選</div>` : ''}
     ${cands.length ? `<div id="sbCandWrap" class="sb-cand">${candDropHtml(cands)}</div>` : ''}
-    <label class="ed-field"><span class="ed-lab">名稱</span>
-      <input id="sbName" type="text" value="${esc(sub.name)}" placeholder="${isStop ? '例如：山竹冰沙' : '例如：The Artist Spa'}" autocomplete="off"></label>
+    <${swaps.length ? 'div' : 'label'} class="ed-field">${swaps.length ? `<span class="ed-lab-row"><span class="ed-lab">名稱</span>
+      <button type="button" class="swap-btn" id="sbSwapBtn" aria-expanded="false"><i class="ti ti-arrows-exchange"></i> 從備選替換</button></span>
+      <div id="sbSwapWrap">${candListHtml(swaps)}</div>` : '<span class="ed-lab">名稱</span>'}
+      <input id="sbName" type="text" aria-label="名稱" value="${esc(sub.name)}" placeholder="${isStop ? '例如：山竹冰沙' : '例如：The Artist Spa'}" autocomplete="off"></${swaps.length ? 'div' : 'label'}>
     <div class="err" id="sbNameErr" hidden>請輸入名稱</div>
     <label class="ed-field"><span class="ed-lab">${isStop ? '原文店名' : '一句話說明'}</span>
       <input id="sbSub" type="text" value="${esc(isStop ? sub.orig : sub.desc)}" placeholder="${isStop ? '例如：Joost Smoothies' : '例如：高 CP 值人氣平價按摩'}" autocomplete="off"></label>
@@ -3152,9 +3214,11 @@ function openSubEditor(cardId, kind, idx, fromCand) {
           <button type="button" class="step" data-d="-15" aria-label="少 15 分鐘"><i class="ti ti-minus"></i></button>
           <span class="ed-dur" id="sbDurTxt"></span>
           <button type="button" class="step" data-d="15" aria-label="多 15 分鐘"><i class="ti ti-plus"></i></button></span></div>
-      <div><div class="chips sm" id="sbDur">${[30, 60, 90, 120, 180].map(d => `<button type="button" class="chip" data-v="${d}">${durLabel(d)}</button>`).join('')}</div></div></div>
-    <label class="ed-field"><span class="ed-lab">補充資訊</span>
-      <input id="sbInfo" type="text" value="${esc(sub.info)}" placeholder="例如：每日 10:00–23:00" autocomplete="off"></label>`}
+      <div><div class="chips sm" id="sbDur">${[30, 60, 90, 120, 180].map(d => `<button type="button" class="chip" data-v="${d}">${durLabel(d)}</button>`).join('')}</div></div></div>`}
+    <div class="ed-field"><span class="ed-lab">類型 <span class="ed-lab-hint">拆成獨立卡片時用這個顏色</span></span><div class="chips" id="sbCls">
+      ${TYPES.map(([k, n]) => `<button type="button" class="chip ${k}${k === sed.cls ? ' on' : ''}" data-v="${k}">${n}</button>`).join('')}</div></div>
+    <label class="ed-field"><span class="ed-lab">重點提醒</span>
+      <input id="sbAlert" type="text" value="${esc(sub.alert || '')}" placeholder="例如：只收現金、16:30 關門" autocomplete="off"></label>
     <label class="ed-field"><span class="ed-lab">地圖 <span class="ed-lab-hint">貼上 Google 地圖的分享連結最準確</span></span>
       <span class="clr-wrap"><input id="sbMap" type="text" value="${esc(sub.map)}" placeholder="貼上分享連結，或輸入店名" autocomplete="off" inputmode="url"><button type="button" class="clr-btn" aria-label="清除" tabindex="-1"><i class="ti ti-x"></i></button></span></label>
     <div class="map-status" id="sbMapStatus"></div>
@@ -3164,12 +3228,28 @@ function openSubEditor(cardId, kind, idx, fromCand) {
     ${fullNoteField('sbFull', nk)}
     <div class="err" id="sbErr" hidden></div>
     <div class="ed-actions">
-      ${isNew ? '' : '<button type="button" class="btn ghost danger" id="sbDel"><i class="ti ti-trash"></i> 刪除</button>'}
+      ${isNew || old ? '' : '<button type="button" class="btn ghost danger" id="sbDel"><i class="ti ti-trash"></i> 刪除</button>'}
       <button type="button" class="btn ghost ed-cancel">取消</button>
-      <button type="button" class="btn primary" id="sbSave">${c ? '加入' : isNew ? '新增' : '儲存'}</button>
+      <button type="button" class="btn primary" id="sbSave">${old ? '替換' : c ? '加入' : isNew ? '新增' : '儲存'}</button>
     </div>`, isNew && !cands.length && !c ? '#sbName' : '.sh-close');
   wireCandDrop(sheet.querySelector('#sbCandWrap'), id => openSubEditor(cardId, kind, null, id));
   const $ = id => sheet.querySelector('#' + id);
+  $('sbCls').addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    sed.cls = b.dataset.v; sheet.querySelectorAll('#sbCls .chip').forEach(x => x.classList.toggle('on', x === b));
+  });
+  // 從備選替換：改過欄位的提醒修改不會保留
+  const sig = () => [...sheet.querySelectorAll('input,textarea')].map(x => x.value).join('\u0001') + sed.cls + sed.dur, sig0 = sig();
+  $('sbSwapBtn')?.addEventListener('click', e => {
+    e.preventDefault();
+    const b = $('sbSwapBtn'), on = !b.classList.contains('open');
+    b.classList.toggle('open', on); b.setAttribute('aria-expanded', on);
+    $('sbSwapWrap').querySelector('.cand-drop').hidden = !on;
+  });
+  wireCandDrop($('sbSwapWrap'), id => {
+    if (sig() !== sig0 && !confirm('剛剛在這裡的修改不會保留，確定要換嗎？')) return;
+    openSubEditor(cardId, kind, idx, id, true);
+  }, { addEventListener() {} });
   const refresh = () => {
     $('sbMapStatus').innerHTML = mapStatusHtml($('sbMap').value.trim(), $('sbName').value.trim());
     $('sbDurTxt').textContent = durLabel(sed.dur);
@@ -3191,8 +3271,8 @@ function saveSub() {
   const [, card] = findItem(sed.cardId), list = subList(card, sed.kind), isStop = sed.kind === 'stop';
   const name = $('sbName').value.trim();
   if (!name) { $('sbNameErr').hidden = false; $('sbName').focus(); return; }
-  const old = sed.isNew ? sed.prefill || {} : list[sed.idx];
-  const sub = { ...old, name, map: $('sbMap').value.trim(), mine: $('sbMine').value.trim() };
+  const old = sed.prefill || (sed.isNew ? {} : list[sed.idx]);
+  const sub = { ...old, name, map: $('sbMap').value.trim(), mine: $('sbMine').value.trim(), cls: sed.cls, alert: $('sbAlert').value.trim() };
   if (name !== old.name) delete sub.short;                      // 改了名字，收合時就顯示新名字
   if (sub.map !== (old.map || '')) { sub.loc = ''; sub.pid = ''; }   // 地點換了：座標之後在背景重查
   if (!old.note && NOTES[subNoteKey(old)]) sub.note = subNoteKey(old);   // 改名後還找得到原本整理好的筆記
@@ -3203,21 +3283,26 @@ function saveSub() {
     const sMin = $('sbS').value ? fromInput($('sbS').value) : m(old.s || card.s);
     if (sMin + sed.dur > DAY_END) { $('sbErr').textContent = '最晚只能排到凌晨 05:00'; $('sbErr').hidden = false; return; }
     Object.assign(sub, { s: hhmm(sMin), dur: sed.dur, orig: $('sbSub').value.trim(), area: $('sbArea').value.trim(), desc: $('sbDesc').value.trim() });
-    delete sub.info;   // 從備選帶進來的提醒已經併進筆記摘要，一站沒有這個欄位
   } else {
-    Object.assign(sub, { desc: $('sbSub').value.trim(), info: $('sbInfo').value.trim(), dur: sed.dur });
+    Object.assign(sub, { desc: $('sbSub').value.trim(), dur: sed.dur });
     if (sed.prefill) delete sub.s;
     // 改了開始時間＝整張卡片一起移動（多選一每一家同一個開始時間）
     const sMin = $('sbS').value ? fromInput($('sbS').value) : m(card.s);
     if (sMin + sed.dur > DAY_END) { $('sbErr').textContent = '最晚只能排到凌晨 05:00'; $('sbErr').hidden = false; return; }
     if (hhmm(sMin) !== card.s) { const len = m(card.e) - m(card.s); card.s = hhmm(sMin); card.e = hhmm(Math.min(sMin + len, DAY_END)); }
   }
+  // 從備選替換：原本那一家整份變成一張備選卡片（時間用它原本的時段）
+  const out = sed.replace ? list[sed.idx] : null;
+  if (out) {
+    const os = isStop ? m(out.s) : m(card.s), od = isStop ? out.dur : +out.dur || m(card.e) - m(card.s);
+    DATA.cand.push(cardOf(placeOf(out, card.cls), { s: hhmm(os), e: hhmm(Math.min(os + od, DAY_END)) }));
+  }
   if (sed.isNew) list.push(sub); else list[sed.idx] = sub;
   let note = sed.isNew ? (isStop ? '已新增一站' : '已新增選項') : '已儲存';
   if (sed.fromCand) {   // 從備選挑的：搬進來之後，備選裡那張拿掉
     const i = DATA.cand.findIndex(x => x.id === sed.fromCand);
     if (i >= 0) DATA.cand.splice(i, 1);
-    note = `已從備選加入「${name}」`;
+    note = out ? `已把「${out.name}」換成「${name}」，「${out.name}」移到備選` : `已從備選加入「${name}」`;
   }
   if (isStop) {
     list.sort((a, b) => m(a.s) - m(b.s));
